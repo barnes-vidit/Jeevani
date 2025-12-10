@@ -1,0 +1,10 @@
+
+fastapi
+uvicorn
+python-multipart
+google-generativeai
+pinecone-client
+python-dotenv
+requests
+pypdf
+beautifulsoup4
