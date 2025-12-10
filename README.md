@@ -1,48 +1,40 @@
 
-# Jeevani - MVP
+# Jeevani - Digital Biographer & Legacy Preservation
 
-Jeevani is a digital biographer that captures your life story using AI.
+**Jeevani** is a project designed to capture and preserve personal life stories. It acts as a digital biographer, using AI to organize memories, photos, and documents into a cohesive narrative, ensuring that your legacy lives on.
 
-## Prerequisites
-- Node.js & npm
-- Python 3.10+
-- MongoDB Atlas Account (Free)
-- Clerk Account (Free)
-- Cloudinary Account (Free)
-- Pinecone Account (Free)
-- Google Gemini API Key (Free)
+## Team
+**Major Project by:**
+*   Yatharth Patankar
+*   Ujjwal Seth
+*   Veer Mediwala
+*   Vidit Sharma
 
-## Setup
+---
 
-### 1. Environment Variables
+## Technical Stack
+*   **Frontend:** React, Vite, Tailwind CSS
+*   **Backend:** Node.js, Express, MongoDB
+*   **AI Service:** Python, FastAPI, Google Gemini (LLM & Embeddings), Pinecone (Vector DB)
+*   **Auth:** Clerk
+*   **Storage:** Cloudinary
 
-Create `.env` files in `server`, `client`, and `ai-service` based on the examples provided.
+---
 
-**server/.env**
-```
-PORT=5000
-MONGODB_URI=your_mongodb_uri
-CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
-CLOUDINARY_CLOUD_NAME=...
-CLOUDINARY_API_KEY=...
-CLOUDINARY_API_SECRET=...
-AI_SERVICE_URL=http://localhost:8000
-```
+## Local Development Setup
 
-**client/.env**
-```
-VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-VITE_API_URL=http://localhost:5000/api
-```
+### Prerequisites
+*   Node.js & npm
+*   Python 3.10+
+*   MongoDB Atlas Account
+*   Clerk Account
+*   Cloudinary Account
+*   Google Gemini API Key
+*   Pinecone API Key
 
-**ai-service/.env**
-```
-GEMINI_API_KEY=your_gemini_key
-PINECONE_API_KEY=your_pinecone_key
-```
 
-### 2. Install Dependencies
+
+### 1. Installation
 
 **Server**
 ```bash
@@ -62,27 +54,26 @@ cd ai-service
 pip install -r requirements.txt
 ```
 
-### 3. Run Locally
+### 2. Running the Application
 
-Open 3 terminal windows:
+You need to run all three services simultaneously in separate terminals.
 
-**Terminal 1 (AI Service)**
+**Terminal 1: AI Service**
 ```bash
 cd ai-service
 uvicorn main:app --reload --port 8000
 ```
 
-**Terminal 2 (Server)**
+**Terminal 2: Server**
 ```bash
 cd server
-npm run start # (You might need to add "start": "node index.js" to package.json)
-# Or: node index.js
+npm start
 ```
 
-**Terminal 3 (Client)**
+**Terminal 3: Client**
 ```bash
 cd client
 npm run dev
 ```
 
-Visit `http://localhost:5173` to start using Jeevani!
+Visit `http://localhost:5173` to access the application.
