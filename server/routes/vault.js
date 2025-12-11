@@ -17,10 +17,21 @@ cloudinary.config({
 // Multer Storage Config
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
-    params: {
-        folder: 'jeevani_vault',
-        resource_type: 'auto', // auto-detect type (image, video/audio, raw/pdf)
-        allowed_formats: ['jpg', 'png', 'pdf', 'docx', 'txt', 'mp3', 'wav']
+    params: async (req, file) => {
+        // Force RAW for documents to prevent "Image" processing errors
+        let resourceType = 'auto';
+        if (file.mimetype === 'application/pdf' ||
+            file.mimetype.includes('msword') ||
+            file.mimetype.includes('document')) {
+            resourceType = 'raw';
+        }
+
+        return {
+            folder: 'jeevani_vault',
+            resource_type: resourceType,
+            public_id: file.originalname.split('.')[0].replace(/[^a-z0-9]/gi, '_').toLowerCase() + "_" + Date.now(),
+            format: resourceType === 'raw' ? undefined : file.mimetype.split('/')[1] // 'auto' doesn't like strict format sometimes
+        };
     },
 });
 
@@ -35,8 +46,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             return res.status(400).json({ msg: 'No file uploaded' });
         }
 
-        const { auth } = req; // Clerk auth object
-        const userId = auth?.userId || "debug_test_user"; // Unified debug user
+        const { auth } = req;
+        const authData = auth();
+        console.log("[Vault Upload] Auth:", authData);
+        const { userId } = authData;
+
+        if (!userId) {
+            console.log("Unauthorized Upload Attempt");
+            return res.status(401).json({ msg: 'Unauthorized: No User ID found' });
+        }
 
         const newMemory = new Memory({
             clerkUserId: userId,
@@ -86,8 +104,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 // @access  Private
 router.get('/list', async (req, res) => {
     try {
-        const { auth } = req;
-        const userId = auth?.userId || "debug_test_user";
+        const { userId } = req.auth();
+        if (!userId) return res.status(401).json({ msg: 'Unauthorized' });
+
         console.log(`[Vault] Listing memories for user: ${userId}`);
 
         const memories = await Memory.find({ clerkUserId: userId }).sort({ createdAt: -1 });
@@ -104,8 +123,9 @@ router.get('/list', async (req, res) => {
 // @access  Private
 router.delete('/:id', async (req, res) => {
     try {
-        const { auth } = req;
-        const userId = auth?.userId || "debug_test_user";
+        const { userId } = req.auth();
+        if (!userId) return res.status(401).json({ msg: 'Unauthorized' });
+
         const memory = await Memory.findById(req.params.id);
 
         if (!memory) {

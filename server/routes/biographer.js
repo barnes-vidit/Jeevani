@@ -14,8 +14,12 @@ router.post('/chat', async (req, res) => {
     console.log("[Biographer] Route Handler Entered");
     try {
         const { message } = req.body;
-        const { auth } = req;
-        const userId = auth?.userId || "debug_test_user"; // Fallback for debugging if auth fails
+        const { userId } = req.auth();
+
+        if (!userId) {
+            console.log("[Biographer] Unauthorized access attempt");
+            return res.status(401).json({ msg: 'Unauthorized' });
+        }
 
         if (!message) {
             return res.status(400).json({ msg: 'Message is required' });

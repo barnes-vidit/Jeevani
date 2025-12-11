@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
 import axios from "axios";
 import { Send, User, Bot, Loader2 } from "lucide-react";
+import ReactMarkdown from 'react-markdown';
 
 export default function Biographer() {
     const { getToken } = useAuth();
@@ -72,7 +73,7 @@ export default function Biographer() {
                                 : "bg-card border border-border rounded-tl-sm"
                                 }`}
                         >
-                            {msg.content}
+                            <ReactMarkdown>{msg.content}</ReactMarkdown>
                         </div>
                     </div>
                 ))}

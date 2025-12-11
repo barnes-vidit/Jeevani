@@ -11,15 +11,24 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use((req, res, next) => {
-  console.log(`[Server] ${req.method} ${req.url}`);
-  next();
-});
+
 app.use(clerkMiddleware());
 
 app.use((req, res, next) => {
   console.log(`[Server] ${req.method} ${req.url}`);
+  console.log(`[Server] Auth Header:`, req.headers.authorization ? "Present" : "Missing");
   console.log(`[Server] Req Auth state:`, req.auth);
+  next();
+});
+
+app.use((req, res, next) => {
+  console.log(`[Server] ${req.method} ${req.url}`);
+  try {
+    const authData = req.auth();
+    console.log(`[Server] Auth Data:`, JSON.stringify(authData, null, 2));
+  } catch (e) {
+    console.log(`[Server] Auth Data Error:`, e.message);
+  }
   next();
 });
 
@@ -33,7 +42,7 @@ const vaultRoutes = require('./routes/vault');
 const biographerRoutes = require('./routes/biographer');
 
 // Protected Routes
-// TEMPORARY DEBUG: Removed requireAuth() from ALL routes to unify debugging
+// Manual auth check inside routes to prevent redirect loops
 app.use('/api/vault', vaultRoutes);
 app.use('/api/biographer', biographerRoutes);
 
