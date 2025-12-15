@@ -136,3 +136,21 @@ Answer as Jeevani (warm, empathetic, insightful):"""
 
         response = self.llm.generate_content(prompt)
         return response.text
+
+    def delete_document(self, user_id: str, doc_id: str):
+        """Delete vectors for a specific document"""
+        # Delete by filter
+        try:
+            # Construct the filter. Note: We need to match the metadata structure used in ingest
+            # In ingest: base_id = f"{userId}_{docId}"
+            # Pinecone delete by filter is cleaner
+            self.index.delete(
+                filter={
+                    "userId": user_id,
+                    "docId": doc_id
+                }
+            )
+            return True
+        except Exception as e:
+            print(f"Error deleting document vectors: {e}")
+            return False

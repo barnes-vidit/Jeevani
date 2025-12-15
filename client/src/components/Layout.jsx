@@ -1,8 +1,9 @@
 
 import { UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useLocation } from "react-router-dom";
-import { BookOpen, MessageSquare, UploadCloud, Menu, X, Feather } from "lucide-react";
-import { useState } from "react";
+import { BookOpen, MessageSquare, UploadCloud, Menu, X, Feather, Sun, Moon } from "lucide-react";
+import Logo from "./Logo";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Layout({ children }) {
@@ -10,10 +11,29 @@ export default function Layout({ children }) {
     const location = useLocation();
     const [isSidebarOpen, setSidebarOpen] = useState(true);
 
+    // Theme State
+    const [theme, setTheme] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('theme') || 'light';
+        }
+        return 'light';
+    });
+
+    useEffect(() => {
+        const root = window.document.documentElement;
+        root.classList.remove('light', 'dark');
+        root.classList.add(theme);
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => {
+        setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    };
+
     const navItems = [
         { label: "Memory Vault", icon: UploadCloud, path: "/dashboard" },
         { label: "The Biographer", icon: MessageSquare, path: "/chat" },
-        // { label: "Manuscript", icon: BookOpen, path: "/manuscript" }, // V2
+        { label: "Life Sketch", icon: BookOpen, path: "/memoir" },
     ];
 
     return (
@@ -27,13 +47,8 @@ export default function Layout({ children }) {
                         exit={{ width: 0, opacity: 0 }}
                         className="border-r border-border bg-card shadow-sm flex flex-col z-20"
                     >
-                        <div className="p-6 flex items-center gap-3 border-b border-border">
-                            <div className="h-8 w-8 bg-primary rounded-lg flex items-center justify-center text-primary-foreground">
-                                <Feather size={18} />
-                            </div>
-                            <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-blue-600 bg-clip-text text-transparent">
-                                Jeevani
-                            </h1>
+                        <div className="p-6 flex items-center justify-start border-b border-border">
+                            <Logo withText={true} className="h-10 w-10" />
                         </div>
 
                         <nav className="flex-1 p-4 space-y-2">
@@ -44,8 +59,8 @@ export default function Layout({ children }) {
                                         key={item.path}
                                         to={item.path}
                                         className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-                                                ? "bg-primary/10 text-primary font-medium"
-                                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            ? "bg-primary/10 text-primary font-medium"
+                                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
                                             }`}
                                     >
                                         <item.icon size={20} />
@@ -55,7 +70,18 @@ export default function Layout({ children }) {
                             })}
                         </nav>
 
-                        <div className="p-4 border-t border-border">
+                        <div className="p-4 border-t border-border space-y-2">
+                            {/* Theme Toggle */}
+                            <button
+                                onClick={toggleTheme}
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200"
+                            >
+                                {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
+                                <span className="text-sm font-medium">
+                                    {theme === 'light' ? "Dark Mode" : "Light Mode"}
+                                </span>
+                            </button>
+
                             <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted transition-colors">
                                 <UserButton afterSignOutUrl="/" />
                                 <div className="flex flex-col overflow-hidden">
@@ -87,7 +113,7 @@ export default function Layout({ children }) {
                 </header>
 
                 {/* Page Content */}
-                <div className="flex-1 overflow-auto p-6 scroll-smooth">
+                <div className={`flex-1 p-6 ${location.pathname === '/chat' ? 'overflow-hidden' : 'overflow-auto scroll-smooth'}`}>
                     <div className="max-w-5xl mx-auto h-full">
                         {children}
                     </div>

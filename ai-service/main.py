@@ -109,3 +109,17 @@ async def ingest_file_process(
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+@app.post("/ingest/delete")
+async def delete_document(
+    userId: str = Form(...),
+    docId: str = Form(...)
+):
+    try:
+        success = rag.delete_document(userId, docId)
+        if success:
+            return {"status": "success", "message": "Document vectors deleted"}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete vectors")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

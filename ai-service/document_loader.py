@@ -35,7 +35,7 @@ class AudioTranscriber:
     
     def __init__(self, api_key: str):
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed/cost
+        self.model = genai.GenerativeModel('gemini-flash-latest')
     
     def transcribe_audio(self, file_path: str) -> Dict:
         path = Path(file_path)
@@ -66,6 +66,7 @@ class DocumentLoader:
     
     def __init__(self, gemini_api_key: str):
         self.audio_transcriber = AudioTranscriber(gemini_api_key)
+        self.image_describer = ImageDescriber(gemini_api_key)
     
     @staticmethod
     def load_txt(file_path: str) -> str:
@@ -106,6 +107,14 @@ class DocumentLoader:
                 'metadata': transcription['metadata']
             }
         
+        if extension in ImageDescriber.SUPPORTED_FORMATS:
+            description = self.image_describer.describe_image(file_path)
+            return {
+                'text': description['text'],
+                'type': 'image',
+                'metadata': description['metadata']
+            }
+        
         loaders = {
             '.txt': self.load_txt,
             '.pdf': self.load_pdf,
@@ -122,3 +131,76 @@ class DocumentLoader:
             'type': 'document',
             'metadata': {'filename': path.name}
         }
+
+class ImageDescriber:
+    """Handles image description using Gemini API"""
+    
+    SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
+    
+    def __init__(self, api_key: str):
+        genai.configure(api_key=api_key)
+        # Explicitly using flash-latest to avoid quota issues
+        self.model = genai.GenerativeModel('gemini-flash-latest')
+    
+    def describe_image(self, file_path: str) -> Dict:
+        path = Path(file_path)
+        if path.suffix.lower() not in self.SUPPORTED_FORMATS:
+            raise ValueError(f"Unsupported image format: {path.suffix}")
+            
+        # Upload
+        img_file = genai.upload_file(path=str(path))
+        
+        # Describe
+        prompt = "Describe this image in detail. Capture the main subjects, setting, potential emotions, and any text present. This description will be used to retrieve this memory later."
+        
+        # DEBUG LOG V2 to confirm code update
+        print(f"DEBUG V2: ImageDescriber using model: {self.model.model_name}")
+        
+        # Optimize: Resize image if large
+        try:
+            from PIL import Image
+            import tempfile
+            import os
+            
+            with Image.open(path) as img:
+                # Calculate new size while maintaining aspect ratio
+                max_size = 1024
+                if max(img.size) > max_size:
+                    ratio = max_size / max(img.size)
+                    new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+                    
+                    # Save to temp file
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=path.suffix) as tmp_img:
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        img.save(tmp_img.name)
+                        optimized_path = tmp_img.name
+                        
+                    # Upload optimized file
+                    img_file = genai.upload_file(path=optimized_path)
+                    
+                    # Clean up temp file
+                    os.unlink(optimized_path)
+                else:
+                    # Upload original
+                    img_file = genai.upload_file(path=str(path))
+        except ImportError:
+            # Fallback if PIL not available (though we installed it)
+            print("Warning: Pillow not found, uploading original image.")
+            img_file = genai.upload_file(path=str(path))
+        
+        response = self.model.generate_content([img_file, prompt])
+        
+        description = response.text
+        img_file.delete()
+        
+        return {
+            'text': description,
+            'metadata': {
+                'filename': path.name,
+                'format': path.suffix,
+                'processed_at': datetime.now().isoformat()
+            }
+        }
+

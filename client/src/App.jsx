@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Biographer from './pages/Biographer';
 import Auth from './pages/Auth';
 import Landing from './pages/Landing';
+import Memoir from './pages/Memoir';
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -46,6 +47,21 @@ function ClerkProviderWithRoutes() {
               <SignedIn>
                 <Layout>
                   <Biographer />
+                </Layout>
+              </SignedIn>
+              <SignedOut>
+                <RedirectToSignIn />
+              </SignedOut>
+            </>
+          }
+        />
+        <Route
+          path="/memoir"
+          element={
+            <>
+              <SignedIn>
+                <Layout>
+                  <Memoir />
                 </Layout>
               </SignedIn>
               <SignedOut>
