@@ -3,12 +3,7 @@
 
 **Jeevani** is a project designed to capture and preserve personal life stories. It acts as a digital biographer, using AI to organize memories, photos, and documents into a cohesive narrative, ensuring that your legacy lives on.
 
-## Team
-**Major Project by:**
-*   Yatharth Patankar
-*   Ujjwal Seth
-*   Veer Mediwala
-*   Vidit Sharma
+ **Live Demo:** [https://jeevani-psi.vercel.app/](https://jeevani-psi.vercel.app/)
 
 ---
 
@@ -77,3 +72,12 @@ npm run dev
 ```
 
 Visit `http://localhost:5173` to access the application.
+
+---
+
+## Team
+**Major Project by:**
+*   Yatharth Patankar
+*   Ujjwal Seth
+*   Veer Mediwala
+*   Vidit Sharma

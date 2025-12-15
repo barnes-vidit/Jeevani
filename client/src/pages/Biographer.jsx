@@ -19,7 +19,10 @@ export default function Biographer() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
+
+    // Scroll Refs
     const scrollRef = useRef(null);
+    const autoScrollEnabled = useRef(true);
 
     // History State
     const [showHistory, setShowHistory] = useState(false);
@@ -31,15 +34,26 @@ export default function Biographer() {
     // Use Vite env vars
     const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
-    const scrollToBottom = useCallback(() => {
+    // Scroll Logic
+    const scrollToBottom = () => {
+        if (scrollRef.current && autoScrollEnabled.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    };
+
+    // Initial scroll to bottom
+    useEffect(() => {
         if (scrollRef.current) {
-            scrollRef.current.scrollIntoView({ behavior: "smooth" });
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, []);
 
-    // Scroll to bottom on new messages
+    // Scroll on new messages (force auto-scroll for a moment)
     useEffect(() => {
-        scrollToBottom();
+        if (scrollRef.current) {
+            autoScrollEnabled.current = true;
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
     }, [messages]);
 
     // Cleanup speech recognition on unmount
@@ -76,7 +90,6 @@ export default function Biographer() {
             }
         } catch (err) {
             console.error("Failed to fetch history list", err);
-            // Optionally set error state here if needed
         } finally {
             setLoadingHistory(false);
         }
@@ -112,8 +125,6 @@ export default function Biographer() {
             });
             // Refresh list
             fetchHistoryList(searchQuery);
-
-            // If deleted entry was current view? (Optional: reset view, but keep simpler for now)
         } catch (err) {
             console.error("Failed to delete entry", err);
             alert("Failed to delete entry");
@@ -216,83 +227,112 @@ export default function Biographer() {
                 </div>
 
                 {/* Messages Container */}
-                <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
-                    {messages.map((msg, idx) => (
-                        <div key={idx} className={`flex items-start gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
-                            {/* Avatar */}
-                            {msg.role === "user" ? (
-                                <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center shrink-0 text-primary-foreground shadow-sm">
-                                    <User size={16} />
+                <div
+                    className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth"
+                    ref={(el) => {
+                        // Assign to ref
+                        scrollRef.current = el;
+                        // Attach scroll listener to track user position
+                        if (el) {
+                            el.onscroll = () => {
+                                // 50px threshold to determine if user is at bottom
+                                const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+                                autoScrollEnabled.current = isAtBottom;
+                            };
+                        }
+                    }}
+                >
+                    <div className="max-w-3xl mx-auto space-y-8">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex items-start gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
+                                {/* Avatar */}
+                                <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${msg.role === "user"
+                                    ? "bg-primary text-primary-foreground"
+                                    : "bg-gradient-to-br from-indigo-500 to-purple-600 text-white"
+                                    }`}>
+                                    {msg.role === "user" ? <User size={16} /> : <Sparkles size={14} fill="currentColor" />}
                                 </div>
-                            ) : (
-                                <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 text-white shadow-sm mt-1">
+
+                                {/* Message Content */}
+                                <div className={`flex-1 min-w-0 ${msg.role === "user" ? "flex justify-end" : ""}`}>
+                                    <div className={`text-[15px] leading-7 ${msg.role === "user"
+                                        ? "bg-primary text-primary-foreground dark:text-white px-5 py-2.5 rounded-[20px] rounded-tr-md max-w-[85%]"
+                                        : "prose dark:prose-invert max-w-none text-foreground/90"
+                                        }`}>
+                                        {msg.role === "user" ? (
+                                            <div className="whitespace-pre-wrap">{msg.content}</div>
+                                        ) : (
+                                            <TypewriterText
+                                                content={msg.content}
+                                                animate={msg.animate}
+                                                // Only auto-scroll if enabled (user hasn't scrolled up)
+                                                onUpdate={() => {
+                                                    if (autoScrollEnabled.current && scrollRef.current) {
+                                                        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                                                    }
+                                                }}
+                                            />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {loading && (
+                            <div className="flex items-start gap-4 max-w-3xl mx-auto">
+                                <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
                                     <Sparkles size={14} fill="currentColor" />
                                 </div>
-                            )}
-
-                            {/* Message Bubble */}
-                            <div className={`p-4 rounded-2xl max-w-[85%] md:max-w-[75%] text-sm leading-7 shadow-sm ${msg.role === "user"
-                                ? "bg-primary text-primary-foreground rounded-tr-sm"
-                                : "bg-card border border-border/60 rounded-tl-sm"
-                                }`}>
-                                {msg.role === "user" ? (
-                                    <div className="whitespace-pre-wrap">{msg.content}</div>
-                                ) : (
-                                    <TypewriterText
-                                        content={msg.content}
-                                        animate={msg.animate}
-                                        onUpdate={scrollToBottom}
-                                    />
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                    {loading && (
-                        <div className="flex items-start gap-3">
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0 text-white shadow-sm mt-1">
-                                <Sparkles size={14} fill="currentColor" />
-                            </div>
-                            <div className="p-4 rounded-2xl bg-card border border-border/60 rounded-tl-sm shadow-sm">
-                                <div className="flex gap-1">
-                                    <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce"></span>
-                                    <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                                    <span className="w-1.5 h-1.5 bg-primary/60 rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                                <div className="flex gap-1.5 pt-3 pl-2">
+                                    <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce"></span>
+                                    <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                                    <span className="w-1.5 h-1.5 bg-foreground/40 rounded-full animate-bounce [animation-delay:0.4s]"></span>
                                 </div>
                             </div>
-                        </div>
-                    )}
-                    <div ref={scrollRef} className="h-4" />
+                        )}
+                    </div>
                 </div>
 
                 {/* Input Area */}
-                <div className="p-4 md:p-6 pt-2 bg-background border-t border-border mt-auto shrink-0">
-                    <form onSubmit={handleSend} className="relative flex items-center gap-3">
-                        <button
-                            type="button"
-                            onClick={startListening}
-                            className={`p-3 rounded-full transition-all duration-300 ${isListening ? "bg-red-500 text-white animate-pulse shadow-md scale-110" : "bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground"}`}
-                            title={isListening ? "Stop Listening" : "Start Speaking"}
-                        >
-                            {isListening ? <MicOff size={20} /> : <Mic size={20} />}
-                        </button>
-                        <div className="relative flex-1">
-                            <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder="Type your message..."
-                                disabled={loading}
-                                className="w-full bg-muted/30 border border-border rounded-full py-3.5 pl-5 pr-12 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm font-medium"
-                            />
-                            <button
-                                type="submit"
-                                disabled={loading || !input.trim()}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
-                            >
-                                <Send size={18} />
-                            </button>
-                        </div>
-                    </form>
+                <div className="p-4 bg-background/80 backdrop-blur-sm relative z-20">
+                    <div className="max-w-3xl mx-auto">
+                        <form onSubmit={handleSend} className="relative group">
+                            <div className="relative flex items-center bg-muted/40 hover:bg-muted/60 border border-border/50 hover:border-border rounded-[26px] transition-all shadow-sm focus-within:shadow-md focus-within:border-primary/20 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/10">
+                                <button
+                                    type="button"
+                                    onClick={startListening}
+                                    className={`p-3 ml-1 rounded-full transition-all duration-300 ${isListening
+                                        ? "text-red-500 animate-pulse bg-red-500/10"
+                                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                                        }`}
+                                    title="Voice Input"
+                                >
+                                    {isListening ? <MicOff size={20} /> : <Mic size={20} />}
+                                </button>
+
+                                <input
+                                    type="text"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    placeholder="Tell me your story..."
+                                    disabled={loading}
+                                    className="flex-1 bg-transparent border-none focus:outline-none py-4 px-3 text-base placeholder:text-muted-foreground/50"
+                                />
+
+                                <button
+                                    type="submit"
+                                    disabled={loading || !input.trim()}
+                                    className="p-2 mr-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-0 disabled:scale-75 transition-all duration-200 shadow-sm"
+                                >
+                                    <Send size={18} />
+                                </button>
+                            </div>
+                            <div className="text-center mt-2">
+                                <p className="text-[10px] text-muted-foreground/40">
+                                    Jeevani can make mistakes. Consider checking important information.
+                                </p>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
 
