@@ -64,12 +64,10 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ingest/file-process")
-async def ingest_file_process(
-    userId: str = Form(...),
-    docId: str = Form(...),
-    fileUrl: str = Form(...),
-    originalName: str = Form(...)
-):
+from fastapi import BackgroundTasks
+
+def process_file_background(userId: str, docId: str, fileUrl: str, originalName: str):
+    print(f"Starting background processing for doc {docId}")
     temp_file_path = None
     try:
         # 1. Download file
@@ -100,15 +98,26 @@ async def ingest_file_process(
         }
         
         chunks = rag.ingest_text(text, meta)
-        
-        return {"status": "success", "chunks_processed": chunks, "extracted_text_preview": text[:100]}
+        print(f"Background processing complete for {docId}. Chunks: {chunks}")
         
     except Exception as e:
-        print(f"Error processing file: {e}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
+        print(f"Error processing file in background: {e}")
+        # Ideally, update a DB status here, but we are keeping it simple.
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
+
+@app.post("/ingest/file-process")
+async def ingest_file_process(
+    background_tasks: BackgroundTasks,
+    userId: str = Form(...),
+    docId: str = Form(...),
+    fileUrl: str = Form(...),
+    originalName: str = Form(...)
+):
+    # Offload to background to prevent timeout (502)
+    background_tasks.add_task(process_file_background, userId, docId, fileUrl, originalName)
+    return {"status": "processing_started", "message": "File is being processed in the background"}
 
 @app.post("/ingest/delete")
 async def delete_document(
