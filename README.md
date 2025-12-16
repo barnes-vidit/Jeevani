@@ -3,7 +3,7 @@
 
 **Jeevani** is a project designed to capture and preserve personal life stories. It acts as a digital biographer, using AI to organize memories, photos, and documents into a cohesive narrative, ensuring that your legacy lives on.
 
- **Live Demo:** [https://jeevani-psi.vercel.app/](https://jeevani-psi.vercel.app/)
+**Live Demo:** [https://jeevani-psi.vercel.app/](https://jeevani-psi.vercel.app/)
 
 ---
 
