@@ -92,7 +92,12 @@ router.post('/upload', (req, res, next) => {
         console.log(`[Vault] Memory saved successfully: ${memory._id}`);
 
         // Trigger AI Service processing
-        const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        let AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+        if (AI_SERVICE_URL.endsWith('/')) {
+            AI_SERVICE_URL = AI_SERVICE_URL.slice(0, -1);
+        }
+
+        console.log(`[Vault] Triggering AI Service at: ${AI_SERVICE_URL}/ingest/file-process`);
 
         // Fire and forget (async)
         const params = new URLSearchParams();
