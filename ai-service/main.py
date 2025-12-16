@@ -1,6 +1,6 @@
 
 import os
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -64,7 +64,16 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ingest/file-process")
-from fastapi import BackgroundTasks
+async def ingest_file_process(
+    background_tasks: BackgroundTasks,
+    userId: str = Form(...),
+    docId: str = Form(...),
+    fileUrl: str = Form(...),
+    originalName: str = Form(...)
+):
+    # Offload to background to prevent timeout (502)
+    background_tasks.add_task(process_file_background, userId, docId, fileUrl, originalName)
+    return {"status": "processing_started", "message": "File is being processed in the background"}
 
 def process_file_background(userId: str, docId: str, fileUrl: str, originalName: str):
     print(f"Starting background processing for doc {docId}")
