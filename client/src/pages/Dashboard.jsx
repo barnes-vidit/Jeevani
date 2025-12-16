@@ -61,11 +61,12 @@ export default function Dashboard() {
         formData.append("file", file);
 
         try {
+            console.log("Uploading to:", `${API_URL}/vault/upload`); // Debug URL
             const token = await getToken();
             await axios.post(`${API_URL}/vault/upload`, formData, {
                 headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "multipart/form-data"
+                    Authorization: `Bearer ${token}`
+                    // Let Axios set Content-Type with boundary automatically
                 }
             });
             // Refresh list
