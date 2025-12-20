@@ -7,32 +7,41 @@ import time
 
 class PineconeRAG:
     def __init__(self):
-        # Configure Gemini
-        genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+        self.pc = None
+        self.index = None
         self.embed_model = "models/text-embedding-004"
-        self.llm = genai.GenerativeModel('gemini-flash-latest')
+        self.llm = None
         
-        # Configure Pinecone
-        self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-        self.index_name = "jeevani-index"
-        
-        # Create index if not exists (Basic check, usually done manually or via IaC)
-        # Note: In production you'd want to handle this more robustly
-        existing_indexes = [i.name for i in self.pc.list_indexes()]
-        if self.index_name not in existing_indexes:
-            # We assume user will create it or we can try to create (serverless starter)
-            from pinecone import ServerlessSpec
+        try:
+            # Configure Gemini
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            self.llm = genai.GenerativeModel('gemini-flash-latest')
+            
+            # Configure Pinecone
+            self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+            self.index_name = "jeevani-index"
+            
+            # Create index if not exists (Basic check)
             try:
-                self.pc.create_index(
-                    name=self.index_name,
-                    dimension=768, # Dimension for text-embedding-004
-                    metric="cosine",
-                    spec=ServerlessSpec(cloud="aws", region="us-east-1")
-                )
+                existing_indexes = [i.name for i in self.pc.list_indexes()]
+                if self.index_name not in existing_indexes:
+                    from pinecone import ServerlessSpec
+                    self.pc.create_index(
+                        name=self.index_name,
+                        dimension=768,
+                        metric="cosine",
+                        spec=ServerlessSpec(cloud="aws", region="us-east-1")
+                    )
             except Exception as e:
-                print(f"Index creation warning: {e}")
+                print(f"Index check/creation warning: {e}")
 
-        self.index = self.pc.Index(self.index_name)
+            self.index = self.pc.Index(self.index_name)
+            print("PineconeRAG initialized successfully")
+            
+        except Exception as e:
+            print(f"CRITICAL: PineconeRAG initialization failed: {e}")
+            # We don't raise here to allow the app to start, but methods will fail
+            pass
 
     def embed_text(self, text: str) -> List[float]:
         """Generate embedding for text"""

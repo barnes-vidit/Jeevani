@@ -116,17 +116,7 @@ def process_file_background(userId: str, docId: str, fileUrl: str, originalName:
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-@app.post("/ingest/file-process")
-async def ingest_file_process(
-    background_tasks: BackgroundTasks,
-    userId: str = Form(...),
-    docId: str = Form(...),
-    fileUrl: str = Form(...),
-    originalName: str = Form(...)
-):
-    # Offload to background to prevent timeout (502)
-    background_tasks.add_task(process_file_background, userId, docId, fileUrl, originalName)
-    return {"status": "processing_started", "message": "File is being processed in the background"}
+
 
 @app.post("/ingest/delete")
 async def delete_document(
