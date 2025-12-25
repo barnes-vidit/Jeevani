@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Node / React
+node_modules/
+dist/
+
+# Environment files (all folders)
+.env
+**/.env
+.env.*
