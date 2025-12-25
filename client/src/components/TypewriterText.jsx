@@ -6,8 +6,16 @@ export default function TypewriterText({ content, animate = false, onUpdate }) {
     const hasAnimated = useRef(!animate); // If not animating, mark as done
 
     useEffect(() => {
+        // If already animated, show full content
         if (hasAnimated.current) {
             setDisplayedText(content);
+            return;
+        }
+
+        // Only start if we are supposed to animate and haven't finished yet
+        if (!animate) {
+            setDisplayedText(content);
+            hasAnimated.current = true;
             return;
         }
 
@@ -26,7 +34,11 @@ export default function TypewriterText({ content, animate = false, onUpdate }) {
         }, speed);
 
         return () => clearInterval(interval);
-    }, [content, animate, onUpdate]);
+        // Remove 'content' from dependency to avoid restart on content change (if minor)
+        // If content changes significantly, we might WANT to restart, but for this chat, 
+        // the content is usually static once set.
+        // If streaming, this logic needs adjustment, but for now we are doing full-text receive.
+    }, [animate, onUpdate]); // Removed 'content' from dependency to prevent re-triggering
 
     return (
         <div className="prose prose-sm dark:prose-invert max-w-none">

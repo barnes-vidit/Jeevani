@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const JournalEntry = require('../models/JournalEntry');
+const Memory = require('../models/Memory'); // Import Memory model
 const { requireAuth } = require('@clerk/express'); // Keep for now in case needed elsewhere, but unused here
 
 // Manual Auth Middleware (fixes hanging requireAuth)
@@ -26,7 +27,82 @@ const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
 
 // DEBUG ROUTE
 router.get('/version', (req, res) => {
-    res.json({ version: "1.2.0 - DEBUG MODE", message: "If you see this, the new code is loaded!" });
+    res.json({ version: "1.3.0 - Greeting Engine Active", message: "If you see this, the new code is loaded!" });
+});
+
+// @route   GET /api/biographer/greeting
+// @desc    Get a context-aware greeting from AI
+// @access  Private
+router.get('/greeting', ensureAuthenticated, async (req, res) => {
+    try {
+        const { userId } = req.auth();
+        const now = new Date();
+
+        console.log("Generating greeting context for:", userId);
+
+        // 1. Recent Uploads (Last 48h)
+        const twoDaysAgo = new Date(now.getTime() - (48 * 60 * 60 * 1000));
+        const recentUploadsDocs = await Memory.find({
+            clerkUserId: userId,
+            createdAt: { $gte: twoDaysAgo }
+        }).limit(3).select('originalName fileType');
+
+        const recentUploads = recentUploadsDocs.map(d => d.originalName);
+
+        // 2. Last Chat Summary
+        const lastEntry = await JournalEntry.findOne({ userId }).sort({ date: -1 });
+        let lastChat = "";
+        if (lastEntry && lastEntry.messages.length > 0) {
+            // Get last 2 messages
+            const lastMsgs = lastEntry.messages.slice(-2);
+            lastChat = lastMsgs.map(m => `${m.role}: ${m.content}`).join(" | ");
+        }
+
+        // 3. On This Day (Simple check for same Month/Day)
+        // Note: For MVP we might skip complex aggregation and just check if we have any 'JournalEntry' from previous years
+        // A robust "On This Day" usually requires MongoDB aggregation to match $month and $dayofMonth
+        const month = now.getMonth() + 1; // 1-12
+        const day = now.getDate(); // 1-31
+
+        const onThisDayPipeline = [
+            {
+                $match: {
+                    clerkUserId: userId,
+                    $expr: {
+                        $and: [
+                            { $eq: [{ $month: "$createdAt" }, month] },
+                            { $eq: [{ $dayOfMonth: "$createdAt" }, day] },
+                            { $lt: [{ $year: "$createdAt" }, now.getFullYear()] } // Previous years only
+                        ]
+                    }
+                }
+            },
+            { $limit: 2 },
+            { $project: { originalName: 1, year: { $year: "$createdAt" } } }
+        ];
+
+        const onThisDayDocs = await Memory.aggregate(onThisDayPipeline);
+        const onThisDay = onThisDayDocs.map(d => `Uploaded ${d.originalName} in ${d.year}`);
+
+        // 4. Call AI Service
+        const context = {
+            user_name: "Vidit", // We can get this from Clerk if we pass full user object, for now hardcode/placeholder
+            recent_uploads: recentUploads,
+            last_chat: lastChat,
+            on_this_day: onThisDay,
+            current_date: now.toDateString()
+        };
+
+        console.log("[Biographer] Sending Context to AI:", JSON.stringify(context, null, 2));
+
+        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context);
+        res.json({ greeting: aiResponse.data.greeting });
+
+    } catch (error) {
+        console.error("Greeting Error:", error.message);
+        // Fallback
+        res.json({ greeting: "Hello Vidit! I'm ready to document your story. What's on your mind today?" });
+    }
 });
 
 // @route   GET /api/biographer/history

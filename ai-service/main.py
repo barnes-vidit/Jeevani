@@ -63,6 +63,25 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+class GreetingRequest(BaseModel):
+    user_name: str
+    recent_uploads: list = []
+    last_chat: str = ""
+    on_this_day: list = []
+    current_date: str = ""
+
+@app.post("/chat/greeting")
+async def generate_greeting(request: GreetingRequest):
+    try:
+        print(f"Generating greeting for {request.user_name}")
+        context = request.dict()
+        greeting = rag.generate_greeting(context)
+        print(f"Greeting: {greeting}")
+        return {"greeting": greeting}
+    except Exception as e:
+        print(f"Greeting error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/ingest/file-process")
 async def ingest_file_process(
     background_tasks: BackgroundTasks,

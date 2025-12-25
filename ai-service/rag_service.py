@@ -15,7 +15,7 @@ class PineconeRAG:
         try:
             # Configure Gemini
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            self.llm = genai.GenerativeModel('gemini-flash-latest')
+            self.llm = genai.GenerativeModel('gemma-3-27b-it')
             
             # Configure Pinecone
             self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -153,13 +153,64 @@ Answer as Jeevani (warm, empathetic, insightful):"""
             # Construct the filter. Note: We need to match the metadata structure used in ingest
             # In ingest: base_id = f"{userId}_{docId}"
             # Pinecone delete by filter is cleaner
+            print(f"Attempting to delete vectors with filter: userId={user_id}, docId={doc_id}")
             self.index.delete(
                 filter={
                     "userId": user_id,
                     "docId": doc_id
                 }
             )
+            print(f"Deletion command sent to Pinecone for docId: {doc_id}")
+            return True
+        except Exception as e:
+            print(f"Deletion command sent to Pinecone for docId: {doc_id}")
             return True
         except Exception as e:
             print(f"Error deleting document vectors: {e}")
             return False
+
+    def generate_greeting(self, context: Dict) -> str:
+        """
+        Generate a contextual greeting based on user life-state.
+        Context keys: user_name, recent_uploads (list), last_chat (str), on_this_day (list), current_date (str)
+        """
+        import random
+        
+        user_name = context.get('user_name', 'Friend')
+        uploads = context.get('recent_uploads', [])
+        last_chat = context.get('last_chat', '')
+        # Mood could be inferred from last chat or passed explicitly. For now, we let LLM infer from last_chat content.
+        on_this_day = context.get('on_this_day', [])
+        date_str = context.get('current_date', '')
+
+        # Construct Prompt with Tiered Logic
+        prompt = f"""
+You are Jeevani, a personal biographer. Your goal is to start a conversation with {user_name} ({date_str}).
+Your tone is warm, empathetic, and curious—like an old friend catching up over coffee.
+
+**Context:**
+- **Recent Uploads (Last 48h):** {uploads if uploads else "None"}
+- **On This Day (Past Years):** {on_this_day if on_this_day else "None"}
+- **Last Conversation Summary:** "{last_chat}"
+
+**Decision Logic (Prioritize in order):**
+1. **The Time Capsule:** If 'On This Day' has items, asking about that specific memory is PRIORITY #1. "I saw that X years ago today..."
+2. **The Detective:** If 'Recent Uploads' exist, ask a specific question about one of them. "I saw you added [File]..."
+3. **The Empath:** If 'Last Conversation' was sad, emotional, or unresolved, follow up on it gentle.
+4. **The Storyteller (Default):** If none of the above apply, pick ONE of these random angles to ask a deep life question:
+    - *Values*: A lesson they want to pass down.
+    - *Unsung Heroes*: A person who supported them silently.
+    - *Mischief*: A rule they broke in the past.
+    - *Pattern Matcher*: A habit you've noticed (make one up based on general life themes if no data).
+
+**Constraint:**
+- Generate ONLY the greeting/question.
+- Keep it under 2 sentences.
+- Be specific to the available context.
+"""
+        try:
+            response = self.llm.generate_content(prompt)
+            return response.text.strip()
+        except Exception as e:
+            print(f"Greeting generation failed: {e}")
+            return f"Hello {user_name}, I'm ready to document your story. What's on your mind today?"
