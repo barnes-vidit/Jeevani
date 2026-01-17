@@ -35,6 +35,13 @@ class ChatRequest(BaseModel):
     userId: str
     message: str
 
+class GreetingRequest(BaseModel):
+    user_name: str
+    recent_uploads: list
+    last_chat: str
+    on_this_day: list
+    current_date: str
+
 @app.get("/")
 def read_root():
     return {"status": "Jeevani AI Service Running"}
@@ -61,6 +68,18 @@ async def chat(request: ChatRequest):
         print(f"Generated answer: {answer[:100]}...") # Log first 100 chars
         return {"answer": answer}
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/chat/greeting")
+async def generate_greeting(request: GreetingRequest):
+    try:
+        print(f"Generating greeting for {request.user_name}")
+        context = request.dict()
+        greeting = rag.generate_greeting(context)
+        print(f"Greeting: {greeting}")
+        return {"greeting": greeting}
+    except Exception as e:
+        print(f"Greeting error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ingest/file-process")

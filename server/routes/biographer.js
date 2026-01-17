@@ -29,6 +29,80 @@ router.get('/version', (req, res) => {
     res.json({ version: "1.2.0 - DEBUG MODE", message: "If you see this, the new code is loaded!" });
 });
 
+// @route   GET /api/biographer/greeting
+// @desc    Get a context-aware greeting from AI
+// @access  Private
+router.get('/greeting', ensureAuthenticated, async (req, res) => {
+    try {
+        const { userId } = req.auth();
+        const now = new Date();
+        const Memory = require('../models/Memory'); // Required here if not top-level
+
+        console.log("Generating greeting context for:", userId);
+
+        // 1. Recent Uploads (Last 48h)
+        const twoDaysAgo = new Date(now.getTime() - (48 * 60 * 60 * 1000));
+        const recentUploadsDocs = await Memory.find({
+            clerkUserId: userId,
+            createdAt: { $gte: twoDaysAgo }
+        }).limit(3).select('originalName');
+
+        const recentUploads = recentUploadsDocs.map(d => d.originalName);
+
+        // 2. Last Chat Summary (Get last entry)
+        const lastEntry = await JournalEntry.findOne({ userId }).sort({ date: -1 });
+        let lastChat = "";
+        if (lastEntry && lastEntry.messages.length > 0) {
+            // Get last 2 messages
+            const lastMsgs = lastEntry.messages.slice(-2);
+            lastChat = lastMsgs.map(m => `${m.role}: ${m.content}`).join(" | ");
+        }
+
+        // 3. On This Day (Same Month/Day, Previous Years)
+        const month = now.getMonth() + 1; // 1-12
+        const day = now.getDate(); // 1-31
+
+        const onThisDayPipeline = [
+            {
+                $match: {
+                    clerkUserId: userId,
+                    $expr: {
+                        $and: [
+                            { $eq: [{ $month: "$createdAt" }, month] },
+                            { $eq: [{ $dayOfMonth: "$createdAt" }, day] },
+                            { $lt: [{ $year: "$createdAt" }, now.getFullYear()] } // Previous years only
+                        ]
+                    }
+                }
+            },
+            { $limit: 2 },
+            { $project: { originalName: 1, year: { $year: "$createdAt" } } }
+        ];
+
+        const onThisDayDocs = await Memory.aggregate(onThisDayPipeline);
+        const onThisDay = onThisDayDocs.map(d => `Uploaded ${d.originalName} in ${d.year}`);
+
+        // 4. Call AI Service (Now using /chat/greeting endpoint)
+        const context = {
+            user_name: "Friend", // Can be dynamic if we fetch User profile
+            recent_uploads: recentUploads,
+            last_chat: lastChat,
+            on_this_day: onThisDay,
+            current_date: now.toDateString()
+        };
+
+        console.log("[Biographer] Sending Context to AI:", JSON.stringify(context, null, 2));
+
+        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context);
+        res.json({ greeting: aiResponse.data.greeting });
+
+    } catch (error) {
+        console.error("Greeting Error:", error.message);
+        // Fallback
+        res.json({ greeting: "Hello! I'm ready to document your story. What's on your mind today?" });
+    }
+});
+
 // @route   GET /api/biographer/history
 // @desc    Get list of journal entries (previews only), optionally filtered by search query
 // @access  Private

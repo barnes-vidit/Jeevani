@@ -1,7 +1,7 @@
-
 import os
 import google.generativeai as genai
 from pinecone import Pinecone
+from groq import Groq
 from typing import List, Dict, Optional
 import time
 
@@ -10,12 +10,15 @@ class PineconeRAG:
         self.pc = None
         self.index = None
         self.embed_model = "models/text-embedding-004"
-        self.llm = None
+        self.groq_client = None
         
         try:
-            # Configure Gemini
+            # Configure Gemini (Embeddings Only)
             genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-            self.llm = genai.GenerativeModel('gemini-flash-latest')
+            
+            # Configure Groq
+            self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.3-70b-versatile"
             
             # Configure Pinecone
             self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -133,7 +136,7 @@ class PineconeRAG:
         if not context:
             return "I don't have enough information in your Memory Vault to answer that. Please upload more documents."
 
-        # 4. Generate Answer with Gemini
+        # 4. Generate Answer with Groq (Llama 3.3 70B)
         prompt = f"""You are 'Jeevani', a personal biographer. Use the context below to answer the user's question.
         
 Context:
@@ -143,8 +146,19 @@ User Question: {query}
 
 Answer as Jeevani (warm, empathetic, insightful):"""
 
-        response = self.llm.generate_content(prompt)
-        return response.text
+        completion = self.groq_client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": "You are a helpful personal biographer assistant named Jeevani."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1024,
+            top_p=1,
+            stream=False,
+            stop=None,
+        )
+        return completion.choices[0].message.content
 
     def delete_document(self, user_id: str, doc_id: str):
         """Delete vectors for a specific document"""
@@ -163,3 +177,50 @@ Answer as Jeevani (warm, empathetic, insightful):"""
         except Exception as e:
             print(f"Error deleting document vectors: {e}")
             return False
+
+    def generate_greeting(self, context: Dict) -> str:
+        user_name = context.get('user_name', 'Friend')
+        uploads = context.get('recent_uploads', [])
+        last_chat = context.get('last_chat', '')
+        on_this_day = context.get('on_this_day', [])
+        date_str = context.get('current_date', '')
+
+        # Construct Prompt
+        prompt = f"""
+You are Jeevani, a personal biographer. Your goal is to start a conversation with {user_name} ({date_str}).
+Your tone is warm, empathetic, and curious—like an old friend catching up over coffee.
+
+**Context:**
+- **Recent Uploads (Last 48h):** {uploads if uploads else "None"}
+- **On This Day (Past Years):** {on_this_day if on_this_day else "None"}
+- **Last Conversation Summary:** "{last_chat}"
+
+**Decision Logic (Prioritize in order):**
+1. **The Time Capsule:** If 'On This Day' has items, asking about that specific memory is PRIORITY #1. "I saw that X years ago today..."
+2. **The Detective:** If 'Recent Uploads' exist, ask a specific question about one of them. "I saw you added [File]..."
+3. **The Empath:** If 'Last Conversation' was sad, emotional, or unresolved, follow up on it gentle.
+4. **The Storyteller (Default):** If none of the above apply, pick ONE of these random angles to ask a deep life question:
+    - *Values*: A lesson they want to pass down.
+    - *Unsung Heroes*: A person who supported them silently.
+    - *Mischief*: A rule they broke in the past.
+    - *Pattern Matcher*: A habit you've noticed (make one up based on general life themes if no data).
+
+**Constraint:**
+- Generate ONLY the greeting/question.
+- Keep it under 2 sentences.
+- Be specific to the available context.
+"""
+        try:
+            completion = self.groq_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful personal biographer assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.8,
+                max_tokens=150,
+            )
+            return completion.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Greeting generation failed: {e}")
+            return f"Hello {user_name}, I'm ready to document your story. What's on your mind today?"
