@@ -8,17 +8,53 @@ export default function Biographer() {
     const { getToken } = useAuth();
     const { user } = useUser();
 
+    // Use Vite env vars (moved up for use in greeting fetch)
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
     // Chat State
-    const [messages, setMessages] = useState([
-        {
-            role: "assistant",
-            content: `Hello ${user?.firstName || "there"}! I'm ready to document your story. What's on your mind today?`,
-            animate: true
-        }
-    ]);
+    const [messages, setMessages] = useState([]); // Start empty, fetch greeting
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
+
+    // Strict Lock: Use ref to prevent double-firing in Strict Mode
+    const hasFetchedGreeting = useRef(false);
+
+    // Fetch Greeting on Mount
+    useEffect(() => {
+        const fetchGreeting = async () => {
+            if (hasFetchedGreeting.current) return;
+            hasFetchedGreeting.current = true; // Lock immediately
+
+            setLoading(true); // Show loader during fetch
+            try {
+                const token = await getToken();
+                const res = await axios.get(`${API_URL}/biographer/greeting`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+
+                setMessages([{
+                    role: "assistant",
+                    content: res.data.greeting,
+                    animate: true
+                }]);
+            } catch (err) {
+                console.error("Failed to fetch greeting:", err);
+                // Fallback
+                setMessages([{
+                    role: "assistant",
+                    content: `Hello ${user?.firstName || "there"}! I'm ready to document your story. What's on your mind today?`,
+                    animate: true
+                }]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (user && messages.length === 0) {
+            fetchGreeting();
+        }
+    }, [user, getToken, API_URL]); // Minimized dependencies
 
     // Scroll Refs
     const scrollRef = useRef(null);
@@ -31,8 +67,7 @@ export default function Biographer() {
     const [searchQuery, setSearchQuery] = useState("");
     const [deletingId, setDeletingId] = useState(null);
 
-    // Use Vite env vars
-    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 
     // Scroll Logic
     const scrollToBottom = () => {

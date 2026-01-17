@@ -13,11 +13,18 @@ class PineconeRAG:
         self.groq_client = None
         
         try:
+            gemini_key = os.getenv("GEMINI_API_KEY")
+            print(f"DEBUG: Gemini Key Loaded? {bool(gemini_key)}")
+            if gemini_key:
+                print(f"DEBUG: Gemini Key Prefix: {gemini_key[:4]}...")
+            
             # Configure Gemini (Embeddings Only)
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+            genai.configure(api_key=gemini_key)
             
             # Configure Groq
-            self.groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+            groq_key = os.getenv("GROQ_API_KEY")
+            print(f"DEBUG: Groq Key Loaded? {bool(groq_key)}")
+            self.groq_client = Groq(api_key=groq_key)
             self.model = "llama-3.3-70b-versatile"
             
             # Configure Pinecone
@@ -111,11 +118,17 @@ class PineconeRAG:
     def query_answer(self, query: str, user_id: str) -> str:
         """RAG Query Flow"""
         # 1. Embed Query
-        q_embedding = genai.embed_content(
-            model=self.embed_model,
-            content=query,
-            task_type="retrieval_query"
-        )['embedding']
+        print(f"TRACE: Attempting to embed query for user {user_id}")
+        try:
+            q_embedding = genai.embed_content(
+                model=self.embed_model,
+                content=query,
+                task_type="retrieval_query"
+            )['embedding']
+            print(f"TRACE: Embedding successful, vector length: {len(q_embedding)}")
+        except Exception as embed_error:
+            print(f"TRACE: EMBEDDING FAILED with error: {embed_error}")
+            raise embed_error
         
         # 2. Search Pinecone (Filter by user_id!)
         results = self.index.query(
@@ -135,6 +148,9 @@ class PineconeRAG:
         
         if not context:
             return "I don't have enough information in your Memory Vault to answer that. Please upload more documents."
+
+        if not self.groq_client:
+            return "Error: AI Service not fully initialized (Missing Groq Client). Please check GROQ_API_KEY."
 
         # 4. Generate Answer with Groq (Llama 3.3 70B)
         prompt = f"""You are 'Jeevani', a personal biographer. Use the context below to answer the user's question.
@@ -210,6 +226,9 @@ Your tone is warm, empathetic, and curious—like an old friend catching up over
 - Keep it under 2 sentences.
 - Be specific to the available context.
 """
+        if not self.groq_client:
+            return f"Hello {user_name}, I'm ready to document your story. (AI Not Connected)"
+
         try:
             completion = self.groq_client.chat.completions.create(
                 model=self.model,

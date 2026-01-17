@@ -23,10 +23,11 @@ const ensureAuthenticated = (req, res, next) => {
 
 // AI Service URL
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+console.log("$$$ DEBUG: Using AI_SERVICE_URL:", AI_SERVICE_URL);
 
 // DEBUG ROUTE
 router.get('/version', (req, res) => {
-    res.json({ version: "1.2.0 - DEBUG MODE", message: "If you see this, the new code is loaded!" });
+    res.json({ version: "1.3.0 - Greeting Engine Active", message: "If you see this, the new code is loaded!" });
 });
 
 // @route   GET /api/biographer/greeting

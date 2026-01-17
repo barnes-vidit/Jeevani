@@ -11,7 +11,7 @@ import shutil
 import requests
 from pathlib import Path
 
-load_dotenv()
+load_dotenv(override=True)
 
 app = FastAPI()
 app.add_middleware(
