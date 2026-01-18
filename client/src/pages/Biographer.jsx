@@ -83,11 +83,14 @@ export default function Biographer() {
         }
     }, []);
 
-    // Scroll on new messages (force auto-scroll for a moment)
+    // Scroll only if last message was from user (don't scroll for AI response)
     useEffect(() => {
-        if (scrollRef.current) {
-            autoScrollEnabled.current = true;
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        if (scrollRef.current && messages.length > 0) {
+            const lastMsg = messages[messages.length - 1];
+            if (lastMsg.role === "user") {
+                autoScrollEnabled.current = true;
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
         }
     }, [messages]);
 
@@ -263,7 +266,7 @@ export default function Biographer() {
 
                 {/* Messages Container */}
                 <div
-                    className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth"
+                    className="flex-1 overflow-y-auto px-4 py-6 scroll-smooth scrollbar-custom"
                     ref={(el) => {
                         // Assign to ref
                         scrollRef.current = el;
@@ -297,16 +300,9 @@ export default function Biographer() {
                                         {msg.role === "user" ? (
                                             <div className="whitespace-pre-wrap">{msg.content}</div>
                                         ) : (
-                                            <TypewriterText
-                                                content={msg.content}
-                                                animate={msg.animate}
-                                                // Only auto-scroll if enabled (user hasn't scrolled up)
-                                                onUpdate={() => {
-                                                    if (autoScrollEnabled.current && scrollRef.current) {
-                                                        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-                                                    }
-                                                }}
-                                            />
+                                            <div className="whitespace-pre-wrap animate-in fade-in duration-700 slide-in-from-bottom-2">
+                                                {msg.content}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -344,19 +340,32 @@ export default function Biographer() {
                                     {isListening ? <MicOff size={20} /> : <Mic size={20} />}
                                 </button>
 
-                                <input
-                                    type="text"
+                                <textarea
+                                    ref={(el) => {
+                                        if (el) {
+                                            // Auto-resize
+                                            el.style.height = 'auto'; // Reset height
+                                            el.style.height = `${Math.min(el.scrollHeight, 120)}px`; // Grow up to 120px
+                                        }
+                                    }}
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleSend(e);
+                                        }
+                                    }}
                                     placeholder="Tell me your story..."
                                     disabled={loading}
-                                    className="flex-1 bg-transparent border-none focus:outline-none py-4 px-3 text-base placeholder:text-muted-foreground/50"
+                                    rows={1}
+                                    className="flex-1 bg-transparent border-none focus:outline-none py-3 px-3 text-base placeholder:text-muted-foreground/50 resize-none overflow-y-auto scrollbar-custom max-h-[120px]"
                                 />
 
                                 <button
                                     type="submit"
                                     disabled={loading || !input.trim()}
-                                    className="p-2 mr-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-0 disabled:scale-75 transition-all duration-200 shadow-sm"
+                                    className="p-2 mr-2 self-end mb-2 rounded-full bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-0 disabled:scale-75 transition-all duration-200 shadow-sm"
                                 >
                                     <Send size={18} />
                                 </button>
@@ -392,7 +401,7 @@ export default function Biographer() {
                     </div>
                 </div>
 
-                <div className="overflow-y-auto h-[calc(100%-128px)] p-4 space-y-3">
+                <div className="overflow-y-auto h-[calc(100%-128px)] p-4 space-y-3 scrollbar-custom">
                     {loadingHistory ? (
                         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
                     ) : historyList.length === 0 ? (
