@@ -147,7 +147,7 @@ class PineconeRAG:
         context = "\n\n".join(context_parts)
         
         if not context:
-            return "I don't have enough information in your Memory Vault to answer that. Please upload more documents."
+            context = "[No relevant archived memories found. Rely on the user's input.]"
 
         if not self.groq_client:
             return "Error: AI Service not fully initialized (Missing Groq Client). Please check GROQ_API_KEY."

@@ -94,7 +94,13 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
 
         console.log("[Biographer] Sending Context to AI:", JSON.stringify(context, null, 2));
 
-        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context);
+        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        });
         res.json({ greeting: aiResponse.data.greeting });
 
     } catch (error) {
@@ -206,6 +212,12 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
         const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat`, {
             userId: userId,
             message: message
+        }, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
         });
 
         console.log(`[Biographer] AI Response in Chat Route - Status: ${aiResponse.status}`);
