@@ -1,15 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useAuth, useUser } from "@clerk/clerk-react";
-import axios from "axios";
+import api from "../lib/api";
 import { Send, User, Bot, Loader2, Mic, MicOff, Book, X, Calendar, Sparkles, Search, Trash2 } from "lucide-react";
-import TypewriterText from "../components/TypewriterText";
+
 
 export default function Biographer() {
     const { getToken } = useAuth();
     const { user } = useUser();
 
-    // Use Vite env vars (moved up for use in greeting fetch)
-    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 
     // Chat State
     const [messages, setMessages] = useState([]); // Start empty, fetch greeting
@@ -29,8 +28,10 @@ export default function Biographer() {
             setLoading(true); // Show loader during fetch
             try {
                 const token = await getToken();
-                const res = await axios.get(`${API_URL}/biographer/greeting`, {
-                    headers: { Authorization: `Bearer ${token}` }
+                const userName = user?.firstName || user?.fullName || '';
+                const res = await api.get(`/biographer/greeting`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                    params: { name: userName }
                 });
 
                 setMessages([{
@@ -54,7 +55,7 @@ export default function Biographer() {
         if (user && messages.length === 0) {
             fetchGreeting();
         }
-    }, [user, getToken, API_URL]); // Minimized dependencies
+    }, [user, getToken]);
 
     // Scroll Refs
     const scrollRef = useRef(null);
@@ -117,7 +118,7 @@ export default function Biographer() {
         setLoadingHistory(true);
         try {
             const token = await getToken();
-            const res = await axios.get(`${API_URL}/biographer/history`, {
+            const res = await api.get(`/biographer/history`, {
                 headers: { Authorization: `Bearer ${token}` },
                 params: { q: query }
             });
@@ -137,7 +138,7 @@ export default function Biographer() {
         setLoading(true);
         try {
             const token = await getToken();
-            const res = await axios.get(`${API_URL}/biographer/history/${entryId}`, {
+            const res = await api.get(`/biographer/history/${entryId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             // Loaded history should not animate
@@ -158,7 +159,7 @@ export default function Biographer() {
         setDeletingId(entryId);
         try {
             const token = await getToken();
-            await axios.delete(`${API_URL}/biographer/history/${entryId}`, {
+            await api.delete(`/biographer/history/${entryId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             // Refresh list
@@ -212,7 +213,7 @@ export default function Biographer() {
 
         try {
             const token = await getToken();
-            const res = await axios.post(`${API_URL}/biographer/chat`, {
+            const res = await api.post(`/biographer/chat`, {
                 message: userMessage.content
             }, {
                 headers: { Authorization: `Bearer ${token}` }

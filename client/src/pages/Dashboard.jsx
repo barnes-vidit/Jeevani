@@ -1,29 +1,29 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@clerk/clerk-react";
-import axios from "axios";
-import { Upload, FileText, Music, Trash2, Loader2, CheckCircle, AlertCircle, LayoutGrid, Calendar, Image as ImageIcon, Search as SearchIcon, ExternalLink } from "lucide-react";
+import api from "../lib/api";
+import { Upload, FileText, Music, Trash2, Loader2, CheckCircle, AlertCircle, LayoutGrid, Calendar, Image as ImageIcon, Search as SearchIcon, ExternalLink, FolderOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 export default function Dashboard() {
     const { getToken } = useAuth();
     const [memories, setMemories] = useState([]);
     const [viewMode, setViewMode] = useState('recent'); // 'recent' | 'bucketed'
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-    // Use Vite env vars
-    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
 
     const fetchMemories = async () => {
         try {
             const token = await getToken();
-            const res = await axios.get(`${API_URL}/vault/list`, {
+            const res = await api.get(`/vault/list`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            console.log("Memories fetched:", res.data); // Debugging
             if (Array.isArray(res.data)) {
                 setMemories(res.data);
             } else {
@@ -56,26 +56,50 @@ export default function Dashboard() {
         const file = e.target.files[0];
         if (!file) return;
 
+        // Client-side file validation
+        const maxSize = 25 * 1024 * 1024; // 25MB
+        if (file.size > maxSize) {
+            toast.error("File too large", { description: "Maximum file size is 25MB." });
+            return;
+        }
+
+        const allowedTypes = [
+            'application/pdf', 'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'text/plain', 'audio/mpeg', 'audio/wav', 'audio/webm',
+            'image/jpeg', 'image/png', 'image/webp'
+        ];
+        if (!allowedTypes.includes(file.type)) {
+            toast.error("Unsupported file type", { description: `"${file.type}" is not supported.` });
+            return;
+        }
+
         setUploading(true);
+        setUploadProgress(0);
         const formData = new FormData();
         formData.append("file", file);
 
         try {
-            console.log("Uploading to:", `${API_URL}/vault/upload`); // Debug URL
             const token = await getToken();
-            await axios.post(`${API_URL}/vault/upload`, formData, {
+            await api.post(`/vault/upload`, formData, {
                 headers: {
                     Authorization: `Bearer ${token}`
-                    // Let Axios set Content-Type with boundary automatically
+                },
+                onUploadProgress: (progressEvent) => {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    setUploadProgress(percent);
                 }
             });
-            // Refresh list
+            toast.success("Memory uploaded!", { description: `"${file.name}" saved to your vault.` });
             fetchMemories();
         } catch (err) {
             console.error("Upload failed", err);
-            alert("Upload failed. Please try again.");
+            toast.error("Upload failed", { description: "Something went wrong. Please try again." });
         } finally {
             setUploading(false);
+            setUploadProgress(0);
+            // Reset the file input
+            e.target.value = '';
         }
     };
 
@@ -83,12 +107,14 @@ export default function Dashboard() {
         if (!confirm("Are you sure? This memory will be forgotten.")) return;
         try {
             const token = await getToken();
-            await axios.delete(`${API_URL}/vault/${id}`, {
+            await api.delete(`/vault/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setMemories(memories.filter((m) => m._id !== id));
+            toast.success("Memory removed");
         } catch (err) {
             console.error("Delete failed", err);
+            toast.error("Delete failed", { description: "Could not remove this memory." });
         }
     };
 
@@ -119,7 +145,7 @@ export default function Dashboard() {
             </div>
 
             {/* Upload Area */}
-            <div className="border-2 border-dashed border-border rounded-2xl p-10 flex flex-col items-center justify-center bg-card/50 hover:bg-card hover:border-primary/50 transition-all group">
+            <div className="border-2 border-dashed border-border rounded-2xl p-10 flex flex-col items-center justify-center bg-card/50 hover:bg-card hover:border-primary/50 transition-all group relative overflow-hidden">
                 <label className="cursor-pointer flex flex-col items-center">
                     <div className="h-16 w-16 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4 group-hover:scale-110 transition-transform">
                         {uploading ? <Loader2 className="animate-spin" size={32} /> : <Upload size={32} />}
@@ -128,7 +154,7 @@ export default function Dashboard() {
                         {uploading ? "Uploading to Vault..." : "Click to Upload Files"}
                     </span>
                     <span className="text-sm text-muted-foreground mt-1">
-                        Supports PDF, DOCX, TXT, MP3, WAV, JPG, PNG
+                        Supports PDF, DOCX, TXT, MP3, WAV, JPG, PNG (max 25MB)
                     </span>
                     <input
                         type="file"
@@ -138,6 +164,28 @@ export default function Dashboard() {
                         accept=".pdf,.docx,.txt,.mp3,.wav,.jpg,.jpeg,.png,.webp"
                     />
                 </label>
+
+                {/* Upload Progress Bar */}
+                {uploading && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="w-full max-w-xs mt-6"
+                    >
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                            <span>Uploading...</span>
+                            <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                            <motion.div
+                                className="h-full bg-gradient-to-r from-primary to-primary/70 rounded-full"
+                                initial={{ width: 0 }}
+                                animate={{ width: `${uploadProgress}%` }}
+                                transition={{ duration: 0.3 }}
+                            />
+                        </div>
+                    </motion.div>
+                )}
             </div>
 
             {/* List Control Bar */}
@@ -196,9 +244,30 @@ export default function Dashboard() {
                 {loading ? (
                     <div className="flex justify-center p-8"><Loader2 className="animate-spin text-muted-foreground" /></div>
                 ) : memories.length === 0 ? (
-                    <div className="text-center p-8 border rounded-xl bg-muted/20">
-                        <p className="text-muted-foreground">No memories found. Start uploading above!</p>
-                    </div>
+                    /* Item 14: Enhanced Empty State */
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="flex flex-col items-center justify-center py-16 px-8 border border-dashed border-border rounded-2xl bg-muted/10"
+                    >
+                        <div className="w-20 h-20 bg-gradient-to-br from-primary/10 to-purple-500/10 rounded-full flex items-center justify-center mb-6">
+                            <FolderOpen size={36} className="text-primary/60" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">Your vault is empty</h3>
+                        <p className="text-muted-foreground text-center max-w-sm mb-6">
+                            Upload your first memory — a journal entry, a photo, or a voice note — and let Jeevani start learning your story.
+                        </p>
+                        <label className="cursor-pointer inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors">
+                            <Upload size={18} />
+                            Upload Your First Memory
+                            <input
+                                type="file"
+                                className="hidden"
+                                onChange={handleUpload}
+                                accept=".pdf,.docx,.txt,.mp3,.wav,.jpg,.jpeg,.png,.webp"
+                            />
+                        </label>
+                    </motion.div>
                 ) : viewMode === 'recent' ? (
                     /* RECENT VIEW */
                     <motion.div layout className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -278,6 +347,11 @@ const MemoryCard = ({ memory, getIcon, handleDelete }) => {
                     <p className="text-xs text-muted-foreground mt-1">
                         {new Date(memory.createdAt).toLocaleDateString()}
                     </p>
+                    {memory.summary && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
+                            {memory.summary}
+                        </p>
+                    )}
                     <div className="flex items-center gap-1 mt-2 text-xs">
                         {memory.processingStatus === 'completed' ? (
                             <span className="flex items-center gap-1 text-green-600"><CheckCircle size={12} /> Ready</span>

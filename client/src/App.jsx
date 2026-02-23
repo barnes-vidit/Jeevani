@@ -1,7 +1,8 @@
 
-import { ClerkProvider, SignedIn, SignedOut, RedirectToSignIn } from '@clerk/clerk-react';
+import { ClerkProvider } from '@clerk/clerk-react';
+import { Toaster } from 'sonner';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Biographer from './pages/Biographer';
 import Auth from './pages/Auth';
@@ -25,51 +26,9 @@ function ClerkProviderWithRoutes() {
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/auth/*" element={<Auth />} />
-        <Route
-          path="/dashboard"
-          element={
-            <>
-              <SignedIn>
-                <Layout>
-                  <Dashboard />
-                </Layout>
-              </SignedIn>
-              <SignedOut>
-                <RedirectToSignIn />
-              </SignedOut>
-            </>
-          }
-        />
-        <Route
-          path="/chat"
-          element={
-            <>
-              <SignedIn>
-                <Layout>
-                  <Biographer />
-                </Layout>
-              </SignedIn>
-              <SignedOut>
-                <RedirectToSignIn />
-              </SignedOut>
-            </>
-          }
-        />
-        <Route
-          path="/memoir"
-          element={
-            <>
-              <SignedIn>
-                <Layout>
-                  <Memoir />
-                </Layout>
-              </SignedIn>
-              <SignedOut>
-                <RedirectToSignIn />
-              </SignedOut>
-            </>
-          }
-        />
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/chat" element={<ProtectedRoute><Biographer /></ProtectedRoute>} />
+        <Route path="/memoir" element={<ProtectedRoute><Memoir /></ProtectedRoute>} />
       </Routes>
     </ClerkProvider>
   );
@@ -79,6 +38,7 @@ function App() {
   return (
     <BrowserRouter>
       <ClerkProviderWithRoutes />
+      <Toaster richColors position="bottom-right" />
     </BrowserRouter>
   );
 }

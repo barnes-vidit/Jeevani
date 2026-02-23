@@ -9,7 +9,25 @@ import { motion, AnimatePresence } from "framer-motion";
 export default function Layout({ children }) {
     const { user } = useUser();
     const location = useLocation();
-    const [isSidebarOpen, setSidebarOpen] = useState(true);
+    const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    // Detect mobile breakpoint
+    useEffect(() => {
+        const checkMobile = () => {
+            const mobile = window.innerWidth < 768;
+            setIsMobile(mobile);
+            if (!mobile) setSidebarOpen(true); // Auto-open on desktop
+        };
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    // Auto-close sidebar on navigation (mobile only)
+    useEffect(() => {
+        if (isMobile) setSidebarOpen(false);
+    }, [location.pathname]);
 
     // Theme State
     const [theme, setTheme] = useState(() => {
@@ -38,17 +56,40 @@ export default function Layout({ children }) {
 
     return (
         <div className="flex h-screen bg-background text-foreground overflow-hidden">
+            {/* Mobile Backdrop Overlay */}
+            <AnimatePresence>
+                {isSidebarOpen && isMobile && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setSidebarOpen(false)}
+                        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 md:hidden"
+                    />
+                )}
+            </AnimatePresence>
+
             {/* Sidebar */}
             <AnimatePresence mode="wait">
                 {isSidebarOpen && (
                     <motion.aside
-                        initial={{ width: 0, opacity: 0 }}
-                        animate={{ width: 260, opacity: 1 }}
-                        exit={{ width: 0, opacity: 0 }}
-                        className="border-r border-border bg-card shadow-sm flex flex-col z-20"
+                        initial={{ x: -260, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: -260, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        className={`w-[260px] border-r border-border bg-card shadow-sm flex flex-col z-40
+                            ${isMobile ? 'fixed inset-y-0 left-0' : 'relative'}`}
                     >
-                        <div className="p-6 flex items-center justify-start border-b border-border">
+                        <div className="p-6 flex items-center justify-between border-b border-border">
                             <Logo withText={true} className="h-10 w-10" />
+                            {isMobile && (
+                                <button
+                                    onClick={() => setSidebarOpen(false)}
+                                    className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground"
+                                >
+                                    <X size={18} />
+                                </button>
+                            )}
                         </div>
 
                         <nav className="flex-1 p-4 space-y-2">
@@ -106,10 +147,8 @@ export default function Layout({ children }) {
                         onClick={() => setSidebarOpen(!isSidebarOpen)}
                         className="p-2 hover:bg-muted rounded-lg text-muted-foreground"
                     >
-                        {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+                        {isSidebarOpen && !isMobile ? <X size={20} /> : <Menu size={20} />}
                     </button>
-
-                    {/* Breadcrumbs or Page Title could go here */}
                 </header>
 
                 {/* Page Content */}

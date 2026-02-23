@@ -23,6 +23,10 @@ const MemorySchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    resourceType: { // Cloudinary resource_type ('raw', 'image', 'video', 'auto')
+        type: String,
+        default: 'raw'
+    },
     processingStatus: {
         type: String,
         enum: ['uploaded', 'processing', 'completed', 'failed'],

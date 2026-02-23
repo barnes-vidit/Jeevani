@@ -1,22 +1,23 @@
 
 import os
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from rag_service import PineconeRAG
 from document_loader import DocumentLoader
 import tempfile
-import shutil
 import requests
 from pathlib import Path
 
 load_dotenv(override=True)
 
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,6 +35,7 @@ class IngestRequest(BaseModel):
 class ChatRequest(BaseModel):
     userId: str
     message: str
+    chat_history: list = []  # Optional recent messages for multi-turn context
 
 class GreetingRequest(BaseModel):
     user_name: str
@@ -63,9 +65,7 @@ async def ingest_text(request: IngestRequest):
 @app.post("/chat")
 async def chat(request: ChatRequest):
     try:
-        print(f"Received chat request from {request.userId}: {request.message}")
-        answer = rag.query_answer(request.message, request.userId)
-        print(f"Generated answer: {answer[:100]}...") # Log first 100 chars
+        answer = rag.query_answer(request.message, request.userId, request.chat_history)
         return {"answer": answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -73,10 +73,8 @@ async def chat(request: ChatRequest):
 @app.post("/chat/greeting")
 async def generate_greeting(request: GreetingRequest):
     try:
-        print(f"Generating greeting for {request.user_name}")
         context = request.dict()
         greeting = rag.generate_greeting(context)
-        print(f"Greeting: {greeting}")
         return {"greeting": greeting}
     except Exception as e:
         print(f"Greeting error: {e}")
@@ -84,36 +82,27 @@ async def generate_greeting(request: GreetingRequest):
 
 @app.post("/ingest/file-process")
 async def ingest_file_process(
-    background_tasks: BackgroundTasks,
     userId: str = Form(...),
     docId: str = Form(...),
     fileUrl: str = Form(...),
     originalName: str = Form(...)
 ):
-    # Offload to background to prevent timeout (502)
-    background_tasks.add_task(process_file_background, userId, docId, fileUrl, originalName)
-    return {"status": "processing_started", "message": "File is being processed in the background"}
-
-def process_file_background(userId: str, docId: str, fileUrl: str, originalName: str):
-    print(f"Starting background processing for doc {docId}")
+    """Process file: download, extract text, ingest to Pinecone, generate summary."""
     temp_file_path = None
     try:
         # 1. Download file
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
         response = requests.get(fileUrl, stream=True, headers=headers)
         response.raise_for_status()
         
-        # Determine extension from original name or url
-        ext = Path(originalName).suffix
-        if not ext:
-            ext = ".txt" # Default
+        ext = Path(originalName).suffix or ".txt"
             
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             for chunk in response.iter_content(chunk_size=8192):
                 tmp.write(chunk)
             temp_file_path = tmp.name
             
-        # 2. Load and Transcribe/Extract
+        # 2. Load and Extract text
         doc = loader.load_file(temp_file_path)
         text = doc['text']
         
@@ -124,13 +113,20 @@ def process_file_background(userId: str, docId: str, fileUrl: str, originalName:
             "originalName": originalName,
             "type": doc['type']
         }
-        
         chunks = rag.ingest_text(text, meta)
-        print(f"Background processing complete for {docId}. Chunks: {chunks}")
+        
+        # 4. Generate summary (item 21)
+        summary = rag.generate_summary(text, originalName)
+        
+        return {
+            "status": "success",
+            "chunks_processed": chunks,
+            "summary": summary
+        }
         
     except Exception as e:
-        print(f"Error processing file in background: {e}")
-        # Ideally, update a DB status here, but we are keeping it simple.
+        print(f"Error processing file: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
             os.remove(temp_file_path)

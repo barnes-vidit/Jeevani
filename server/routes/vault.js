@@ -18,7 +18,7 @@ cloudinary.config({
 const storage = new CloudinaryStorage({
     cloudinary: cloudinary,
     params: async (req, file) => {
-        console.log(`[Multer Debug] Processing file: ${file.originalname} (${file.mimetype})`);
+
 
         // Determine resource type
         let resourceType = 'auto';
@@ -41,12 +41,32 @@ const storage = new CloudinaryStorage({
         // If raw, we don't set format. 
         // If auto (image), let Cloudinary decide or keep original.
 
-        console.log(`[Multer Debug] Upload params:`, JSON.stringify(params));
+
         return params;
     },
 });
 
-const upload = multer({ storage: storage });
+// Allowed MIME types (item 25: server-side validation)
+const ALLOWED_MIMES = [
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'text/plain',
+    'audio/mpeg', 'audio/wav', 'audio/webm',
+    'image/jpeg', 'image/png', 'image/webp'
+];
+
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 25 * 1024 * 1024 }, // 25MB max
+    fileFilter: (req, file, cb) => {
+        if (ALLOWED_MIMES.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error(`Unsupported file type: ${file.mimetype}`), false);
+        }
+    }
+});
 
 const uploadMiddleware = upload.single('file');
 
@@ -54,13 +74,13 @@ const uploadMiddleware = upload.single('file');
 // @desc    Upload a file to the vault
 // @access  Private
 router.post('/upload', (req, res, next) => {
-    console.log("[Vault] Starting Upload Middleware");
+
     uploadMiddleware(req, res, (err) => {
         if (err) {
             console.error("[Vault] Multer Upload Error:", err);
             return res.status(500).json({ msg: 'File upload failed', error: err.message });
         }
-        console.log("[Vault] Upload Middleware Completed");
+
         next();
     });
 }, async (req, res) => {
@@ -71,12 +91,20 @@ router.post('/upload', (req, res, next) => {
 
         const { auth } = req;
         const authData = auth();
-        console.log("[Vault Upload] Auth:", authData);
+
         const { userId } = authData;
 
         if (!userId) {
             console.log("Unauthorized Upload Attempt");
             return res.status(401).json({ msg: 'Unauthorized: No User ID found' });
+        }
+
+        // Determine resource type for Cloudinary (mirror the upload logic)
+        let resourceType = 'raw';
+        if (req.file.mimetype.startsWith('image/')) {
+            resourceType = 'image';
+        } else if (req.file.mimetype.startsWith('video/') || req.file.mimetype.startsWith('audio/')) {
+            resourceType = 'video';
         }
 
         const newMemory = new Memory({
@@ -85,11 +113,12 @@ router.post('/upload', (req, res, next) => {
             fileType: req.file.mimetype,
             cloudUrl: req.file.path,
             publicId: req.file.filename,
+            resourceType: resourceType,
             processingStatus: 'processing'
         });
 
         const memory = await newMemory.save();
-        console.log(`[Vault] Memory saved successfully: ${memory._id}`);
+
 
         // Trigger AI Service processing
         let AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
@@ -97,7 +126,7 @@ router.post('/upload', (req, res, next) => {
             AI_SERVICE_URL = AI_SERVICE_URL.slice(0, -1);
         }
 
-        console.log(`[Vault] Triggering AI Service at: ${AI_SERVICE_URL}/ingest/file-process`);
+
 
         // Fire and forget (async)
         const params = new URLSearchParams();
@@ -108,15 +137,14 @@ router.post('/upload', (req, res, next) => {
 
         axios.post(`${AI_SERVICE_URL}/ingest/file-process`, params, {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-        }).then(async () => {
-            console.log(`Ingestion started for ${memory._id}`);
-            await Memory.findByIdAndUpdate(memory._id, { processingStatus: 'completed' });
+        }).then(async (aiRes) => {
+            const summary = aiRes.data?.summary || '';
+            await Memory.findByIdAndUpdate(memory._id, {
+                processingStatus: 'completed',
+                summary: summary
+            });
         }).catch(err => {
             console.error("AI Ingestion Failed:", err.message);
-            if (err.response) {
-                console.error("AI Service Error Data:", err.response.data);
-                console.error("AI Service Status:", err.response.status);
-            }
             Memory.findByIdAndUpdate(memory._id, { processingStatus: 'failed' }).exec();
         });
 
@@ -135,10 +163,10 @@ router.get('/list', async (req, res) => {
         const { userId } = req.auth();
         if (!userId) return res.status(401).json({ msg: 'Unauthorized' });
 
-        console.log(`[Vault] Listing memories for user: ${userId}`);
+
 
         const memories = await Memory.find({ clerkUserId: userId }).sort({ createdAt: -1 });
-        console.log(`[Vault] Found ${memories.length} memories`);
+
         res.json(memories);
     } catch (err) {
         console.error(err.message);
@@ -165,10 +193,10 @@ router.delete('/:id', async (req, res) => {
             return res.status(401).json({ msg: 'User not authorized' });
         }
 
-        // Delete from Cloudinary
-        await cloudinary.uploader.destroy(memory.publicId, { resource_type: 'raw' }); // 'raw' might need adjustment based on type
-        // Note: Cloudinary resource_type needs to match what was uploaded. 
-        // For simplicity in MVP, we might try-catch delete or store resource_type in DB.
+        // Delete from Cloudinary using stored resource_type
+        await cloudinary.uploader.destroy(memory.publicId, {
+            resource_type: memory.resourceType || 'raw'
+        });
 
         // Delete from AI Service (Pinecone)
         const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';

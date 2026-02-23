@@ -4,38 +4,49 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const { clerkMiddleware, requireAuth } = require('@clerk/express');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
+// -- CORS (item 23): restrict in production, allow all in dev --
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['*'];
+
 app.use(cors({
-  origin: '*', // Allow all origins (or you can specify your vercel app)
+  origin: ALLOWED_ORIGINS.includes('*') ? '*' : ALLOWED_ORIGINS,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.options('*', cors()); // Enable pre-flight for all routes
+app.options('*', cors());
+
+// -- Rate Limiting (item 24) --
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100,            // 100 requests per minute per IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' }
+});
+app.use('/api', apiLimiter);
+
+// Stricter limit on chat to protect Groq API quota
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: { error: 'Chat rate limit reached. Please wait a moment.' }
+});
+app.use('/api/biographer/chat', chatLimiter);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 app.use(clerkMiddleware());
 
+// Request logger (concise)
 app.use((req, res, next) => {
-  console.log(`[Server] ${req.method} ${req.url}`);
-  console.log(`[Server] Auth Header:`, req.headers.authorization ? "Present" : "Missing");
-  console.log(`[Server] Req Auth state:`, req.auth);
-  next();
-});
-
-app.use((req, res, next) => {
-  console.log(`[Server] ${req.method} ${req.url}`);
-  try {
-    const authData = req.auth();
-    console.log(`[Server] Auth Data:`, JSON.stringify(authData, null, 2));
-  } catch (e) {
-    console.log(`[Server] Auth Data Error:`, e.message);
-  }
+  console.log(`[${req.method}] ${req.url}`);
   next();
 });
 

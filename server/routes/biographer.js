@@ -2,18 +2,18 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 const JournalEntry = require('../models/JournalEntry');
-const { requireAuth } = require('@clerk/express'); // Keep for now in case needed elsewhere, but unused here
+// const { requireAuth } = require('@clerk/express'); // Unused — using manual ensureAuthenticated instead
 
 // Manual Auth Middleware (fixes hanging requireAuth)
 const ensureAuthenticated = (req, res, next) => {
-    console.log(`[Auth] Checking auth for ${req.method} ${req.url}`);
+
     try {
         const { userId } = req.auth();
         if (!userId) {
             console.log("[Auth] No userId found -> 401");
             return res.status(401).json({ error: "Unauthorized" });
         }
-        console.log(`[Auth] Verified User: ${userId}`);
+
         next();
     } catch (err) {
         console.error("[Auth] Error checking auth status:", err);
@@ -23,12 +23,7 @@ const ensureAuthenticated = (req, res, next) => {
 
 // AI Service URL
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
-console.log("$$$ DEBUG: Using AI_SERVICE_URL:", AI_SERVICE_URL);
 
-// DEBUG ROUTE
-router.get('/version', (req, res) => {
-    res.json({ version: "1.3.0 - Greeting Engine Active", message: "If you see this, the new code is loaded!" });
-});
 
 // @route   GET /api/biographer/greeting
 // @desc    Get a context-aware greeting from AI
@@ -36,10 +31,11 @@ router.get('/version', (req, res) => {
 router.get('/greeting', ensureAuthenticated, async (req, res) => {
     try {
         const { userId } = req.auth();
+        const userName = req.query.name || 'Friend';
         const now = new Date();
-        const Memory = require('../models/Memory'); // Required here if not top-level
+        const Memory = require('../models/Memory');
 
-        console.log("Generating greeting context for:", userId);
+
 
         // 1. Recent Uploads (Last 48h)
         const twoDaysAgo = new Date(now.getTime() - (48 * 60 * 60 * 1000));
@@ -83,16 +79,16 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
         const onThisDayDocs = await Memory.aggregate(onThisDayPipeline);
         const onThisDay = onThisDayDocs.map(d => `Uploaded ${d.originalName} in ${d.year}`);
 
-        // 4. Call AI Service (Now using /chat/greeting endpoint)
+        // 4. Call AI Service
         const context = {
-            user_name: "Friend", // Can be dynamic if we fetch User profile
+            user_name: userName,
             recent_uploads: recentUploads,
             last_chat: lastChat,
             on_this_day: onThisDay,
             current_date: now.toDateString()
         };
 
-        console.log("[Biographer] Sending Context to AI:", JSON.stringify(context, null, 2));
+
 
         const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context);
         res.json({ greeting: aiResponse.data.greeting });
@@ -139,32 +135,32 @@ router.get('/history', ensureAuthenticated, async (req, res) => {
 // @desc    Delete a specific journal entry
 // @access  Private
 router.delete('/history/:id', ensureAuthenticated, async (req, res) => {
-    console.log(`[$$$ DEBUG $$$] DELETE Request for ID: ${req.params.id}`);
+
     try {
         const { id } = req.params;
         const { userId } = req.auth();
-        console.log(`[$$$ DEBUG $$$] Auth User: ${userId}`);
+
 
         // 1. Check if Entry Exists
         const entry = await JournalEntry.findById(id);
         if (!entry) {
-            console.log(`[$$$ DEBUG $$$] Entry NOT FOUND in DB`);
+
             return res.status(404).json({ error: "Entry not found in database" });
         }
 
         // 2. Check Ownership
-        console.log(`[$$$ DEBUG $$$] Entry Owner: ${entry.userId}`);
+
         if (entry.userId !== userId) {
-            console.log(`[$$$ DEBUG $$$] OWNERSHIP MISMATCH!`);
+
             return res.status(403).json({ error: "Unauthorized: You do not own this entry" });
         }
 
         // 3. Delete
         await JournalEntry.findByIdAndDelete(id);
-        console.log(`[$$$ DEBUG $$$] DELETED Successfully`);
+
         res.json({ message: "Journal entry deleted successfully" });
     } catch (error) {
-        console.error("[$$$ DEBUG $$$] Error deleting entry:", error);
+        console.error("Error deleting entry:", error.message);
         res.status(500).json({ error: "Failed to delete entry" });
     }
 });
@@ -191,7 +187,7 @@ router.get('/history/:id', ensureAuthenticated, async (req, res) => {
 // @desc    Chat with the biographer
 // @access  Private
 router.post('/chat', ensureAuthenticated, async (req, res) => {
-    console.log("[Biographer] Route Handler Entered");
+
     try {
         const { message } = req.body;
         const { userId } = req.auth();
@@ -200,20 +196,30 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
             return res.status(400).json({ msg: 'Message is required' });
         }
 
-        // Call AI Service
-        console.log(`[Biographer] Sending message to AI: ${message}`);
-        // We pass userId to let AI service filter Pinecone vectors
+        // Fetch recent conversation history for multi-turn context
+        const today = new Date().toISOString().split('T')[0];
+        let chatHistory = [];
+        const todayEntry = await JournalEntry.findOne({ userId, date: today });
+        if (todayEntry && todayEntry.messages.length > 0) {
+            // Send last 10 messages for context
+            chatHistory = todayEntry.messages.slice(-10).map(m => ({
+                role: m.role,
+                content: m.content
+            }));
+        }
+
+        // Call AI Service with conversation history
         const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat`, {
             userId: userId,
-            message: message
+            message: message,
+            chat_history: chatHistory
         });
 
-        console.log(`[Biographer] AI Response in Chat Route - Status: ${aiResponse.status}`);
+
 
         const answer = aiResponse.data.answer;
 
         // Save to Journal Entry (Daily Bucket)
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
         await JournalEntry.findOneAndUpdate(
             { userId, date: today },

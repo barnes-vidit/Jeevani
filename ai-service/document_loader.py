@@ -153,8 +153,7 @@ class ImageDescriber:
         # Describe
         prompt = "Describe this image in detail. Capture the main subjects, setting, potential emotions, and any text present. This description will be used to retrieve this memory later."
         
-        # DEBUG LOG V2 to confirm code update
-        print(f"DEBUG V2: ImageDescriber using model: {self.model.model_name}")
+        
         
         # Optimize: Resize image if large
         try:

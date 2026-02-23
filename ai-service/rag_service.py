@@ -1,16 +1,19 @@
 import os
-import google.generativeai as genai
 from pinecone import Pinecone
 from groq import Groq
 from typing import List, Dict, Optional
 import time
+from google import genai
+from google.genai import types
+
 
 class PineconeRAG:
     def __init__(self):
         self.pc = None
         self.index = None
-        self.embed_model = "models/text-embedding-004"
+        self.embed_model = "models/gemini-embedding-001"
         self.groq_client = None
+        self.genai_client = None  
         
         try:
             gemini_key = os.getenv("GEMINI_API_KEY")
@@ -18,8 +21,8 @@ class PineconeRAG:
             if gemini_key:
                 print(f"DEBUG: Gemini Key Prefix: {gemini_key[:4]}...")
             
-            # Configure Gemini (Embeddings Only)
-            genai.configure(api_key=gemini_key)
+            # Use the new google.genai Client (replaces genaii.configure)
+            self.genai_client = genai.Client(api_key=gemini_key)
             
             # Configure Groq
             groq_key = os.getenv("GROQ_API_KEY")
@@ -50,22 +53,23 @@ class PineconeRAG:
             
         except Exception as e:
             print(f"CRITICAL: PineconeRAG initialization failed: {e}")
-            # We don't raise here to allow the app to start, but methods will fail
             pass
 
     def embed_text(self, text: str) -> List[float]:
-        """Generate embedding for text"""
-        # Gemini embedding
-        result = genai.embed_content(
+        """Generate embedding for text using google.genai Client"""
+        result = self.genai_client.models.embed_content(
             model=self.embed_model,
-            content=text,
-            task_type="retrieval_document"
+            contents=text,
+            config=types.EmbedContentConfig(
+                output_dimensionality=768
+            )
         )
-        return result['embedding']
+        embedding = result.embeddings[0].values
+        print("Embedding length:", len(embedding))
+        return embedding
 
     def ingest_text(self, text: str, meta: Dict, chunk_size: int = 1000) -> int:
         """Chunk text, embed, and upsert to Pinecone"""
-        # Semantic chunking is better, but crude char/word splitting works for MVP
         chunks = self._chunk_text(text, chunk_size)
         vectors = []
         
@@ -75,9 +79,8 @@ class PineconeRAG:
             embedding = self.embed_text(chunk)
             vector_id = f"{base_id}_{i}"
             
-            # Prepare metadata
             metadata = meta.copy()
-            metadata['text'] = chunk # Store text in metadata for retrieval context
+            metadata['text'] = chunk
             metadata['chunk_index'] = i
             
             vectors.append({
@@ -86,7 +89,6 @@ class PineconeRAG:
                 "metadata": metadata
             })
             
-            # Batch upsert (max 100)
             if len(vectors) >= 50:
                 self.index.upsert(vectors=vectors)
                 vectors = []
@@ -96,51 +98,97 @@ class PineconeRAG:
             
         return len(chunks)
 
-    def _chunk_text(self, text: str, size: int) -> List[str]:
-        # Simple overlap chunking
-        words = text.split()
+    def generate_summary(self, text: str, original_name: str) -> str:
+        """Generate a 2-3 sentence summary of a document using the LLM."""
+        if not self.groq_client:
+            return ""
+        try:
+            # Truncate to avoid token limits
+            snippet = text[:3000]
+            completion = self.groq_client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You summarize documents in 2-3 concise sentences."},
+                    {"role": "user", "content": f"Summarize this document titled '{original_name}':\n\n{snippet}"}
+                ],
+                temperature=0.3,
+                max_tokens=150,
+            )
+            return completion.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"Summary generation failed: {e}")
+            return ""
+
+    def _chunk_text(self, text: str, size: int, overlap: int = 150) -> List[str]:
+        """Sentence-aware chunking with overlap to avoid context loss at boundaries."""
+        import re
+        # Split on sentence boundaries (period, exclamation, question mark followed by space)
+        sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+        
         chunks = []
         current_chunk = []
         current_len = 0
         
-        for word in words:
-            current_chunk.append(word)
-            current_len += len(word) + 1
-            if current_len >= size:
+        for sentence in sentences:
+            sentence_len = len(sentence)
+            if current_len + sentence_len > size and current_chunk:
+                # Save the current chunk
                 chunks.append(" ".join(current_chunk))
-                current_chunk = current_chunk[-100:] # Overlap 100 chars approx
-                current_len = len(" ".join(current_chunk))
+                
+                # Build overlap: keep trailing sentences that fit within overlap budget
+                overlap_chunk = []
+                overlap_len = 0
+                for s in reversed(current_chunk):
+                    if overlap_len + len(s) > overlap:
+                        break
+                    overlap_chunk.insert(0, s)
+                    overlap_len += len(s) + 1
+                
+                current_chunk = overlap_chunk
+                current_len = overlap_len
+            
+            current_chunk.append(sentence)
+            current_len += sentence_len + 1
         
         if current_chunk:
             chunks.append(" ".join(current_chunk))
+        
         return chunks
 
-    def query_answer(self, query: str, user_id: str) -> str:
-        """RAG Query Flow"""
+    def query_answer(self, query: str, user_id: str, chat_history: List[Dict] = None) -> str:
+        """RAG Query Flow with optional conversation history."""
         # 1. Embed Query
-        print(f"TRACE: Attempting to embed query for user {user_id}")
         try:
-            q_embedding = genai.embed_content(
-                model=self.embed_model,
-                content=query,
-                task_type="retrieval_query"
-            )['embedding']
-            print(f"TRACE: Embedding successful, vector length: {len(q_embedding)}")
+            q_embedding = self.embed_text(query)
         except Exception as embed_error:
-            print(f"TRACE: EMBEDDING FAILED with error: {embed_error}")
             raise embed_error
         
-        # 2. Search Pinecone (Filter by user_id!)
+        # 2. Hybrid Search: semantic + keyword re-ranking (item 19)
         results = self.index.query(
             vector=q_embedding,
-            top_k=5,
+            top_k=10,  # Over-fetch for re-ranking
             filter={"userId": user_id},
             include_metadata=True
         )
         
+        # Keyword re-ranking: boost results that share keywords with the query
+        query_keywords = set(query.lower().split())
+        ranked = []
+        for match in results.matches:
+            text = match.metadata.get('text', '') if match.metadata else ''
+            chunk_words = set(text.lower().split())
+            overlap = len(query_keywords & chunk_words)
+            keyword_score = overlap / max(len(query_keywords), 1)
+            # Weighted combination: 70% semantic, 30% keyword
+            hybrid_score = 0.7 * match.score + 0.3 * keyword_score
+            ranked.append((hybrid_score, match))
+        
+        ranked.sort(key=lambda x: x[0], reverse=True)
+        top_matches = [m for _, m in ranked[:5]]
+        
         # 3. Construct Context
         context_parts = []
-        for match in results.matches:
+        for match in top_matches:
             if match.metadata and 'text' in match.metadata:
                 context_parts.append(f"Source ({match.score:.2f}): {match.metadata.get('originalName', 'Unknown')}\n{match.metadata['text']}")
         
@@ -152,8 +200,9 @@ class PineconeRAG:
         if not self.groq_client:
             return "Error: AI Service not fully initialized (Missing Groq Client). Please check GROQ_API_KEY."
 
-        # 4. Generate Answer with Groq (Llama 3.3 70B)
-        # 4. Generate Answer with Groq (Llama 3.3 70B)
+        # 4. Build conversation messages for multi-turn context
+        system_msg = {"role": "system", "content": "You are a helpful personal biographer assistant named Jeevani."}
+        
         prompt = f"""You are 'Jeevani', a personal biographer. Use the context below to answer the user's question or continue the conversation.
 
 Context:
@@ -176,12 +225,20 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
 - Use short, readable paragraphs.
 - End with **ONE** quality follow-up question (if appropriate)."""
 
+        # Build messages array with conversation history for multi-turn
+        messages = [system_msg]
+        
+        if chat_history:
+            # Include up to 10 recent messages for context
+            for msg in chat_history[-10:]:
+                messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+        
+        messages.append({"role": "user", "content": prompt})
+
+        # 5. Generate Answer with Groq
         completion = self.groq_client.chat.completions.create(
             model=self.model,
-            messages=[
-                {"role": "system", "content": "You are a helpful personal biographer assistant named Jeevani."},
-                {"role": "user", "content": prompt}
-            ],
+            messages=messages,
             temperature=0.7,
             max_tokens=1024,
             top_p=1,
@@ -192,11 +249,7 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
 
     def delete_document(self, user_id: str, doc_id: str):
         """Delete vectors for a specific document"""
-        # Delete by filter
         try:
-            # Construct the filter. Note: We need to match the metadata structure used in ingest
-            # In ingest: base_id = f"{userId}_{docId}"
-            # Pinecone delete by filter is cleaner
             self.index.delete(
                 filter={
                     "userId": user_id,
@@ -215,7 +268,6 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
         on_this_day = context.get('on_this_day', [])
         date_str = context.get('current_date', '')
 
-        # Construct Prompt
         prompt = f"""
 You are Jeevani, a personal biographer. Your goal is to start a conversation with {user_name} ({date_str}).
 Your tone is warm, empathetic, and curious—like an old friend catching up over coffee.
