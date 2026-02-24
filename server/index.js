@@ -9,6 +9,9 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust first proxy (Render, Heroku, etc.) — required for express-rate-limit
+app.set('trust proxy', 1);
+
 // -- CORS (item 23): restrict in production, allow all in dev --
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
