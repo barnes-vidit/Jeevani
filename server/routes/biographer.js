@@ -94,7 +94,7 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
         res.json({ greeting: aiResponse.data.greeting });
 
     } catch (error) {
-        console.error("Greeting Error:", error.message);
+        console.error("Greeting Error:", error.response?.status, error.response?.data || error.message, `URL: ${AI_SERVICE_URL}/chat/greeting`);
         // Fallback
         res.json({ greeting: "Hello! I'm ready to document your story. What's on your mind today?" });
     }
@@ -240,8 +240,8 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
         });
 
     } catch (err) {
-        console.error("AI Chat Error:", err.response?.data || err.message);
-        res.status(500).send('Error communicating with Biographer');
+        console.error("AI Chat Error:", err.response?.status, err.response?.data || err.message, err.code, `URL: ${AI_SERVICE_URL}/chat`);
+        res.status(500).json({ error: 'Error communicating with Biographer', detail: err.response?.data || err.message });
     }
 });
 

@@ -71,6 +71,25 @@ app.get('/', (req, res) => {
   res.send('Jeevani API is running');
 });
 
+// Diagnostic endpoint to check service health
+app.get('/health', async (req, res) => {
+  const axios = require('axios');
+  const AI_SERVICE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000';
+  const checks = {
+    server: 'ok',
+    mongodb: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    ai_service_url: AI_SERVICE_URL,
+    ai_service: 'unknown'
+  };
+  try {
+    const aiRes = await axios.get(`${AI_SERVICE_URL}/`, { timeout: 5000 });
+    checks.ai_service = aiRes.data?.status || 'reachable';
+  } catch (err) {
+    checks.ai_service = `error: ${err.code || err.message}`;
+  }
+  res.json(checks);
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);

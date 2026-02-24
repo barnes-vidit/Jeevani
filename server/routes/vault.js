@@ -136,7 +136,8 @@ router.post('/upload', (req, res, next) => {
         params.append('originalName', memory.originalName);
 
         axios.post(`${AI_SERVICE_URL}/ingest/file-process`, params, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            timeout: 300000 // 5 min timeout for large file processing
         }).then(async (aiRes) => {
             const summary = aiRes.data?.summary || '';
             await Memory.findByIdAndUpdate(memory._id, {
@@ -144,7 +145,7 @@ router.post('/upload', (req, res, next) => {
                 summary: summary
             });
         }).catch(err => {
-            console.error("AI Ingestion Failed:", err.message);
+            console.error("AI Ingestion Failed:", err.response?.status, err.response?.data || err.message, err.code, `URL: ${AI_SERVICE_URL}/ingest/file-process`);
             Memory.findByIdAndUpdate(memory._id, { processingStatus: 'failed' }).exec();
         });
 
