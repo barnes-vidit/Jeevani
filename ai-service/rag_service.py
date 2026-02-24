@@ -17,16 +17,9 @@ class PineconeRAG:
         
         try:
             gemini_key = os.getenv("GEMINI_API_KEY")
-            print(f"DEBUG: Gemini Key Loaded? {bool(gemini_key)}")
-            if gemini_key:
-                print(f"DEBUG: Gemini Key Prefix: {gemini_key[:4]}...")
-            
-            # Use the new google.genai Client (replaces genaii.configure)
             self.genai_client = genai.Client(api_key=gemini_key)
             
-            # Configure Groq
             groq_key = os.getenv("GROQ_API_KEY")
-            print(f"DEBUG: Groq Key Loaded? {bool(groq_key)}")
             self.groq_client = Groq(api_key=groq_key)
             self.model = "llama-3.3-70b-versatile"
             

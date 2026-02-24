@@ -4,7 +4,7 @@ import re
 import json
 from pathlib import Path
 from datetime import datetime
-import google.generativeai as genai
+from google import genai
 from typing import List, Dict, Optional
 
 # Optional imports with safe fallbacks
@@ -29,13 +29,13 @@ except ImportError:
     pd = None
 
 class AudioTranscriber:
-    """Handles audio transcription using Gemini API"""
+    """Handles audio transcription using Gemini API (new google-genai SDK)"""
     
     SUPPORTED_FORMATS = {'.mp3', '.wav', '.aiff', '.aac', '.ogg', '.flac'}
     
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-flash-latest')
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = 'gemini-2.0-flash'
     
     def transcribe_audio(self, file_path: str) -> Dict:
         path = Path(file_path)
@@ -43,14 +43,17 @@ class AudioTranscriber:
             raise ValueError(f"Unsupported audio format: {path.suffix}")
         
         # Upload
-        audio_file = genai.upload_file(path=str(path))
+        audio_file = self.client.files.upload(file=str(path))
         
         # Transcribe
         prompt = "Transcribe this audio file. Include speaker labels (Speaker 1, Speaker 2) if multiple speakers are detected. Format: [MM:SS] Speaker: Text"
-        response = self.model.generate_content([audio_file, prompt])
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=[audio_file, prompt]
+        )
         
         transcript = response.text
-        audio_file.delete()
+        self.client.files.delete(name=audio_file.name)
         
         return {
             'text': transcript,
@@ -133,66 +136,59 @@ class DocumentLoader:
         }
 
 class ImageDescriber:
-    """Handles image description using Gemini API"""
+    """Handles image description using Gemini API (new google-genai SDK)"""
     
     SUPPORTED_FORMATS = {'.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'}
     
     def __init__(self, api_key: str):
-        genai.configure(api_key=api_key)
-        # Explicitly using flash-latest to avoid quota issues
-        self.model = genai.GenerativeModel('gemini-flash-latest')
+        self.client = genai.Client(api_key=api_key)
+        self.model_name = 'gemini-2.0-flash'
     
     def describe_image(self, file_path: str) -> Dict:
         path = Path(file_path)
         if path.suffix.lower() not in self.SUPPORTED_FORMATS:
             raise ValueError(f"Unsupported image format: {path.suffix}")
-            
-        # Upload
-        img_file = genai.upload_file(path=str(path))
         
-        # Describe
+        # Describe prompt
         prompt = "Describe this image in detail. Capture the main subjects, setting, potential emotions, and any text present. This description will be used to retrieve this memory later."
         
-        
-        
         # Optimize: Resize image if large
+        upload_path = str(path)
+        optimized_path = None
         try:
             from PIL import Image
             import tempfile
-            import os
             
             with Image.open(path) as img:
-                # Calculate new size while maintaining aspect ratio
                 max_size = 1024
                 if max(img.size) > max_size:
                     ratio = max_size / max(img.size)
                     new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
                     img = img.resize(new_size, Image.Resampling.LANCZOS)
                     
-                    # Save to temp file
                     with tempfile.NamedTemporaryFile(delete=False, suffix=path.suffix) as tmp_img:
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
                         img.save(tmp_img.name)
                         optimized_path = tmp_img.name
-                        
-                    # Upload optimized file
-                    img_file = genai.upload_file(path=optimized_path)
-                    
-                    # Clean up temp file
-                    os.unlink(optimized_path)
-                else:
-                    # Upload original
-                    img_file = genai.upload_file(path=str(path))
+                        upload_path = optimized_path
         except ImportError:
-            # Fallback if PIL not available (though we installed it)
             print("Warning: Pillow not found, uploading original image.")
-            img_file = genai.upload_file(path=str(path))
         
-        response = self.model.generate_content([img_file, prompt])
+        # Upload file
+        img_file = self.client.files.upload(file=upload_path)
+        
+        # Clean up temp file if created
+        if optimized_path:
+            os.unlink(optimized_path)
+        
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=[img_file, prompt]
+        )
         
         description = response.text
-        img_file.delete()
+        self.client.files.delete(name=img_file.name)
         
         return {
             'text': description,
@@ -202,4 +198,3 @@ class ImageDescriber:
                 'processed_at': datetime.now().isoformat()
             }
         }
-
