@@ -24,7 +24,7 @@ app.add_middleware(
 )
 
 rag = PineconeRAG()
-loader = DocumentLoader(gemini_api_key=os.getenv("GEMINI_API_KEY"))
+loader = DocumentLoader(groq_api_key=os.getenv("GROQ_API_KEY"))
 
 class IngestRequest(BaseModel):
     userId: str
