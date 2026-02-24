@@ -90,6 +90,17 @@ app.get('/health', async (req, res) => {
   res.json(checks);
 });
 
+// Read AI service logs from container
+app.get('/ai-logs', (req, res) => {
+  const fs = require('fs');
+  try {
+    const logs = fs.readFileSync('/tmp/ai_service.log', 'utf-8');
+    res.type('text/plain').send(logs || '(empty log file)');
+  } catch (err) {
+    res.type('text/plain').send(`Could not read logs: ${err.message}`);
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error(err.stack);
