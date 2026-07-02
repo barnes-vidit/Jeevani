@@ -70,6 +70,15 @@ export default function Biographer() {
 
 
 
+    const inputRef = useRef(null);
+
+    // Auto-focus input when chat is ready
+    useEffect(() => {
+        if (!loading && inputRef.current) {
+            inputRef.current.focus();
+        }
+    }, [loading]);
+
     // Scroll Logic
     const scrollToBottom = () => {
         if (scrollRef.current && autoScrollEnabled.current) {
@@ -230,6 +239,7 @@ export default function Biographer() {
             setMessages((prev) => [...prev, { role: "assistant", content: "I'm having trouble connecting. Please try again.", animate: false }]);
         } finally {
             setLoading(false);
+            // Autofocus handled by useEffect on loading change
         }
     };
 
@@ -343,12 +353,14 @@ export default function Biographer() {
 
                                 <textarea
                                     ref={(el) => {
+                                        inputRef.current = el;
                                         if (el) {
                                             // Auto-resize
                                             el.style.height = 'auto'; // Reset height
                                             el.style.height = `${Math.min(el.scrollHeight, 120)}px`; // Grow up to 120px
                                         }
                                     }}
+                                    autoFocus
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => {

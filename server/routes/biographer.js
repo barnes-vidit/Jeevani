@@ -91,7 +91,17 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
 
 
         const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context);
-        res.json({ greeting: aiResponse.data.greeting });
+        const greeting = aiResponse.data.greeting;
+
+        // Save greeting to journal so LLM has continuity across sessions
+        const today = new Date().toISOString().split('T')[0];
+        await JournalEntry.findOneAndUpdate(
+            { userId, date: today },
+            { $push: { messages: { role: 'assistant', content: greeting } } },
+            { upsert: true, new: true }
+        );
+
+        res.json({ greeting });
 
     } catch (error) {
         console.error("Greeting Error:", error.response?.status, error.response?.data || error.message, `URL: ${AI_SERVICE_URL}/chat/greeting`);
@@ -225,10 +235,12 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
             { userId, date: today },
             {
                 $push: {
-                    messages: [
-                        { role: 'user', content: message },
-                        { role: 'assistant', content: answer }
-                    ]
+                    messages: {
+                        $each: [
+                            { role: 'user', content: message },
+                            { role: 'assistant', content: answer }
+                        ]
+                    }
                 }
             },
             { upsert: true, new: true }
