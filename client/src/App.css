@@ -5,6 +5,15 @@
   text-align: center;
 }
 
+/* Landing page full-bleed override */
+.landing-page-root {
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  text-align: left !important;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;

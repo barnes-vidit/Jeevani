@@ -61,11 +61,13 @@ mongoose.connect(process.env.MONGODB_URI)
 // Routes
 const vaultRoutes = require('./routes/vault');
 const biographerRoutes = require('./routes/biographer');
+const memoirRoutes = require('./routes/memoir');
 
 // Protected Routes
 // Manual auth check inside routes to prevent redirect loops
 app.use('/api/vault', vaultRoutes);
 app.use('/api/biographer', biographerRoutes);
+app.use('/api/memoir', memoirRoutes);
 
 app.get('/', (req, res) => {
   res.send('Jeevani API is running');

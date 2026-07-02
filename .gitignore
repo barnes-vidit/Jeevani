@@ -12,3 +12,6 @@ dist/
 .env.*
 
 .*/
+
+.mcp.json
+

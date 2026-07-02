@@ -5,6 +5,7 @@ import { BookOpen, MessageSquare, UploadCloud, Menu, X, Feather, Sun, Moon } fro
 import Logo from "./Logo";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { dark } from "@clerk/themes";
 
 export default function Layout({ children }) {
     const { user } = useUser();
@@ -124,7 +125,7 @@ export default function Layout({ children }) {
                             </button>
 
                             <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted transition-colors">
-                                <UserButton afterSignOutUrl="/" />
+                                <UserButton afterSignOutUrl="/" appearance={{ baseTheme: theme === 'dark' ? dark : undefined }} />
                                 <div className="flex flex-col overflow-hidden">
                                     <span className="text-sm font-medium truncate">
                                         {user?.fullName || user?.firstName}
