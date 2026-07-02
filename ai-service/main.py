@@ -1,10 +1,12 @@
 
 import os
 import re
-from fastapi import FastAPI, Form, HTTPException, BackgroundTasks
+from dotenv import load_dotenv
+load_dotenv(override=True)
+from fastapi import FastAPI, Form, HTTPException, BackgroundTasks, Security, Depends, status
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
 from rag_service import PineconeRAG
 from document_loader import DocumentLoader
 from memoir_service import generate_biography
@@ -31,7 +33,20 @@ def _clean_manuscript(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()
 
-load_dotenv(override=True)
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    expected_key = os.getenv("AI_SERVICE_API_KEY")
+    if not expected_key:
+        print("WARNING: AI_SERVICE_API_KEY is not set in environment. Defaulting to 'dev-secret-key'")
+        expected_key = "dev-secret-key"
+    if api_key != expected_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key"
+        )
+    return api_key
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
@@ -80,7 +95,7 @@ class GreetingRequest(BaseModel):
 def read_root():
     return {"status": "Jeevani AI Service Running"}
 
-@app.post("/ingest/text")
+@app.post("/ingest/text", dependencies=[Depends(get_api_key)])
 async def ingest_text(request: IngestRequest):
     try:
         meta = {
@@ -94,7 +109,7 @@ async def ingest_text(request: IngestRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chat")
+@app.post("/chat", dependencies=[Depends(get_api_key)])
 async def chat(request: ChatRequest):
     try:
         answer = rag.query_answer(request.message, request.userId, request.chat_history)
@@ -102,7 +117,7 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/chat/greeting")
+@app.post("/chat/greeting", dependencies=[Depends(get_api_key)])
 async def generate_greeting(request: GreetingRequest):
     try:
         context = request.dict()
@@ -112,7 +127,7 @@ async def generate_greeting(request: GreetingRequest):
         print(f"Greeting error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/ingest/file-process")
+@app.post("/ingest/file-process", dependencies=[Depends(get_api_key)])
 async def ingest_file_process(
     userId: str = Form(...),
     docId: str = Form(...),
@@ -235,7 +250,7 @@ async def _run_memoir_pipeline(user_id: str, job_id: str):
             {"$set": {"status": "failed", "errorMessage": str(e)}}
         )
 
-@app.post("/memoir/generate")
+@app.post("/memoir/generate", dependencies=[Depends(get_api_key)])
 async def memoir_generate(request: MemoirGenerateRequest, background_tasks: BackgroundTasks):
     """
     Starts biography generation as a background task.
@@ -245,7 +260,7 @@ async def memoir_generate(request: MemoirGenerateRequest, background_tasks: Back
     background_tasks.add_task(_run_memoir_pipeline, request.userId, request.jobId)
     return {"status": "started", "jobId": request.jobId}
 
-@app.post("/ingest/delete")
+@app.post("/ingest/delete", dependencies=[Depends(get_api_key)])
 async def delete_document(
     userId: str = Form(...),
     docId: str = Form(...)
