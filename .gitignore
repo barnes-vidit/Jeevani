@@ -9,7 +9,7 @@ dist/
 # Environment files (all folders)
 .env
 **/.env
-.env.*
+.env.development
 
 .*/
 

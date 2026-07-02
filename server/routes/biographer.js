@@ -90,7 +90,8 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
 
 
 
-        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context);
+        const headers = { 'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key' };
+        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/greeting`, context, { headers });
         const greeting = aiResponse.data.greeting;
 
         // Save greeting to journal so LLM has continuity across sessions
@@ -219,11 +220,12 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
         }
 
         // Call AI Service with conversation history
+        const headers = { 'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key' };
         const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat`, {
             userId: userId,
             message: message,
             chat_history: chatHistory
-        });
+        }, { headers });
 
 
 

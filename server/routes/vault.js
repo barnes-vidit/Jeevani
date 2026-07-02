@@ -136,7 +136,10 @@ router.post('/upload', (req, res, next) => {
         params.append('originalName', memory.originalName);
 
         axios.post(`${AI_SERVICE_URL}/ingest/file-process`, params, {
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            headers: { 
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key'
+            },
             timeout: 300000 // 5 min timeout for large file processing
         }).then(async (aiRes) => {
             const summary = aiRes.data?.summary || '';
@@ -206,7 +209,10 @@ router.delete('/:id', async (req, res) => {
             params.append('userId', userId);
             params.append('docId', memory._id.toString());
             await axios.post(`${AI_SERVICE_URL}/ingest/delete`, params, {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+                headers: { 
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key'
+                }
             });
             console.log(`[Vault] Deleted vectors for ${memory._id}`);
         } catch (aiErr) {

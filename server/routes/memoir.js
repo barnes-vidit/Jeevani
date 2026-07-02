@@ -28,10 +28,11 @@ router.post('/generate', requireAuth(), async (req, res) => {
     const job = await BiographyJob.create({ userId });
 
     // Fire and forget — generation runs in background in AI service
+    const headers = { 'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key' };
     axios.post(`${AI_SERVICE_URL}/memoir/generate`, {
       userId,
       jobId: job._id.toString()
-    }).catch(err => console.error('[memoir] AI service fire-and-forget error:', err.message));
+    }, { headers }).catch(err => console.error('[memoir] AI service fire-and-forget error:', err.message));
 
     res.json({ jobId: job._id });
   } catch (err) {

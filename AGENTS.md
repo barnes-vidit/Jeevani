@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for Codex agents working in this repository.
+Guidance for agents working in this repository.
 
 ## Project Overview
 
@@ -21,8 +21,9 @@ The main data flow is:
 ## Repository Layout
 
 - `README.md`: human setup guide.
+- `CONTRIBUTING.md`: guide for contributing, coding conventions, and PR checklist.
+- `LICENSE`: MIT license definitions.
 - `Dockerfile` and `start_services.sh`: production-style container that runs the AI service and Node API together.
-- `life_sketch_blueprint.md`: product/design blueprint.
 - `client/src/App.jsx`: route definitions and Clerk provider wiring.
 - `client/src/lib/api.js`: shared Axios instance. Prefer this for frontend API calls.
 - `client/src/pages/`: route-level screens.

@@ -84,7 +84,8 @@ app.get('/health', async (req, res) => {
     ai_service: 'unknown'
   };
   try {
-    const aiRes = await axios.get(`${AI_SERVICE_URL}/`, { timeout: 5000 });
+    const headers = { 'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key' };
+    const aiRes = await axios.get(`${AI_SERVICE_URL}/`, { headers, timeout: 5000 });
     checks.ai_service = aiRes.data?.status || 'reachable';
   } catch (err) {
     checks.ai_service = `error: ${err.code || err.message}`;
