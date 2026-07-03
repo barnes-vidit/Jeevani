@@ -3,14 +3,14 @@ import React, { useState, useEffect } from 'react';
 import logoLight from '../assets/logo.png';
 import logoDark from '../assets/logo-dark.png';
 
-export const Logo = ({ className = "h-8 w-8", withText = false }) => {
+export const Logo = ({ className = "h-8 w-8", withText = false, forceDark = false }) => {
     const [currentLogo, setCurrentLogo] = useState(logoLight);
     const [isDarkMode, setIsDarkMode] = useState(false);
 
     useEffect(() => {
         // Function to check if dark mode is active
         const checkDarkMode = () => {
-            const isDark = document.documentElement.classList.contains('dark');
+            const isDark = forceDark || document.documentElement.classList.contains('dark');
             setIsDarkMode(isDark);
             setCurrentLogo(isDark ? logoDark : logoLight);
         };
@@ -43,7 +43,7 @@ export const Logo = ({ className = "h-8 w-8", withText = false }) => {
             </div>
 
             {withText && (
-                <span className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600'}`}>
+                <span className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'bg-clip-text text-transparent bg-gradient-to-r from-primary to-amber-500'}`}>
                     Jeevani
                 </span>
             )}

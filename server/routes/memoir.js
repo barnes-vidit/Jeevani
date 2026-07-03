@@ -112,7 +112,7 @@ router.get('/export/docx/:jobId', requireAuth(), async (req, res) => {
       return res.status(202).json({ message: 'Biography not ready yet' });
     }
 
-    const { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType } = require('docx');
+    const { Document, Paragraph, TextRun, HeadingLevel, Packer, AlignmentType, ImageRun } = require('docx');
 
     const cleanText = (t) => t
       .replace(/\s*\[UNVERIFIED:[^\]]*\]/g, '')
@@ -126,7 +126,43 @@ router.get('/export/docx/:jobId', requireAuth(), async (req, res) => {
     const docChildren = [];
 
     for (const line of lines) {
-      if (line.startsWith('# ')) {
+      const imageMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imageMatch) {
+        const alt = imageMatch[1];
+        const url = imageMatch[2];
+        try {
+          const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000 });
+          const imgBuffer = Buffer.from(response.data);
+          
+          docChildren.push(new Paragraph({
+            children: [
+              new ImageRun({
+                data: imgBuffer,
+                transformation: {
+                  width: 450,
+                  height: 300,
+                },
+              }),
+            ],
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 200, after: 100 }
+          }));
+          
+          if (alt) {
+            docChildren.push(new Paragraph({
+              children: [new TextRun({ text: alt, italics: true, size: 18 })],
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 200 }
+            }));
+          }
+        } catch (err) {
+          console.error('[memoir] docx export image download failed:', url, err.message);
+          docChildren.push(new Paragraph({
+            children: [new TextRun({ text: `[Image: ${alt} (${url})]`, color: 'FF0000', size: 20 })],
+            spacing: { after: 120 }
+          }));
+        }
+      } else if (line.startsWith('# ')) {
         docChildren.push(new Paragraph({
           text: cleanText(line.replace(/^# /, '')),
           heading: HeadingLevel.TITLE,
@@ -219,7 +255,36 @@ router.get('/export/pdf/:jobId', requireAuth(), async (req, res) => {
 
     const lines = job.manuscript.split('\n');
     for (const line of lines) {
-      if (line.startsWith('# ')) {
+      const imageMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (imageMatch) {
+        const alt = imageMatch[1];
+        const url = imageMatch[2];
+        try {
+          const response = await axios.get(url, { responseType: 'arraybuffer', timeout: 5000 });
+          const imgBuffer = Buffer.from(response.data);
+          
+          doc.moveDown(0.5);
+          doc.image(imgBuffer, {
+            fit: [450, 300],
+            align: 'center'
+          });
+          doc.moveDown(0.3);
+          
+          if (alt) {
+            doc.fontSize(9).font('Times-Italic')
+               .text(alt, { align: 'center' })
+               .moveDown(0.8);
+          } else {
+            doc.moveDown(0.5);
+          }
+        } catch (err) {
+          console.error('[memoir] pdf export image download failed:', url, err.message);
+          doc.fontSize(10).font('Times-Bold').fillColor('red')
+             .text(`[Image: ${alt} (${url})]`, { align: 'center' })
+             .fillColor('black')
+             .moveDown(0.8);
+        }
+      } else if (line.startsWith('# ')) {
         doc.moveDown(0.5)
            .fontSize(26).font('Times-Bold')
            .text(pdfClean(line.replace(/^# /, '')), { align: 'center' })

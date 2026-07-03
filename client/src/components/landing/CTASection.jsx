@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useAuth } from '@clerk/clerk-react';
 import { gsap, ScrollTrigger, SplitText } from '../../lib/gsap';
 
 export default function CTASection() {
@@ -11,6 +12,8 @@ export default function CTASection() {
   const burstCanvasRef = useRef(null);
   const ambientCanvasRef = useRef(null);
   const navigate = useNavigate();
+  const { isSignedIn } = useAuth();
+  const destination = isSignedIn ? '/dashboard' : '/auth/sign-up';
 
   // Magnetic button
   useEffect(() => {
@@ -150,7 +153,7 @@ export default function CTASection() {
   // Particle burst on click, then navigate
   const handleClick = useCallback((e) => {
     const canvas = burstCanvasRef.current;
-    if (!canvas) { navigate('/auth/sign-up'); return; }
+    if (!canvas) { navigate(destination); return; }
 
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -191,8 +194,8 @@ export default function CTASection() {
       else { cancelled = true; ctx.clearRect(0, 0, canvas.width, canvas.height); }
     }
     requestAnimationFrame(burst);
-    setTimeout(() => navigate('/auth/sign-up'), 320);
-  }, [navigate]);
+    setTimeout(() => navigate(destination), 320);
+  }, [navigate, destination]);
 
   return (
     <section ref={sectionRef} className="cta-section">
@@ -221,7 +224,7 @@ export default function CTASection() {
             className="cta-magnetic-btn"
             type="button"
           >
-            Start Writing
+            {isSignedIn ? 'Go to Dashboard' : 'Start Writing'}
             <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>

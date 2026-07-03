@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
+import { useAuth } from '@clerk/clerk-react';
 import Logo from '../components/Logo';
 import Preloader from '../components/landing/Preloader';
 import HeroSection from '../components/landing/HeroSection';
@@ -14,8 +15,8 @@ import '../styles/landing.css';
 function getWarmthColor() {
   const h = new Date().getHours();
   if (h >= 17 && h <= 20) return 'rgba(242,140,40,0.032)'; // golden hour / dusk
-  if (h >= 5 && h <= 8)   return 'rgba(242,190,90,0.022)'; // dawn
-  if (h < 5 || h > 20)    return 'rgba(20,15,60,0.038)';   // deep night
+  if (h >= 5 && h <= 8) return 'rgba(242,190,90,0.022)'; // dawn
+  if (h < 5 || h > 20) return 'rgba(20,15,60,0.038)';   // deep night
   return null; // neutral daytime
 }
 
@@ -24,6 +25,7 @@ export default function Landing() {
   const navRef = useRef(null);
   const progressRef = useRef(null);
   const warmthColor = getWarmthColor();
+  const { isSignedIn } = useAuth();
   useLenis();
 
   // Force dark mode on landing page
@@ -90,8 +92,14 @@ export default function Landing() {
       <header ref={navRef} className="landing-nav">
         <Logo withText={true} />
         <nav style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          <Link to="/auth/sign-in" className="landing-nav-login">Log in</Link>
-          <Link to="/auth/sign-up" className="landing-nav-cta">Get Started</Link>
+          {isSignedIn ? (
+            <Link to="/dashboard" className="landing-nav-cta">Go to Dashboard</Link>
+          ) : (
+            <>
+              <Link to="/auth/sign-in" className="landing-nav-login">Log in</Link>
+              <Link to="/auth/sign-up" className="landing-nav-cta">Get Started</Link>
+            </>
+          )}
         </nav>
       </header>
 
@@ -112,8 +120,14 @@ export default function Landing() {
       <footer className="landing-footer">
         <Logo withText={true} />
         <div className="landing-footer-links">
-          <Link to="/auth/sign-in">Log in</Link>
-          <Link to="/auth/sign-up">Get Started</Link>
+          {isSignedIn ? (
+            <Link to="/dashboard">Dashboard</Link>
+          ) : (
+            <>
+              <Link to="/auth/sign-in">Log in</Link>
+              <Link to="/auth/sign-up">Get Started</Link>
+            </>
+          )}
           <a href="mailto:hello@jeevani.app">Contact</a>
         </div>
         <p className="landing-footer-copy">

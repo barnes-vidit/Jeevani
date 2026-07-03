@@ -9,7 +9,7 @@ from quality_gates import verify_facts, check_coherence, CEREBRAS_RATE_LIMITER
 
 CEREBRAS_CLIENT = AsyncOpenAI(
     base_url=os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
-    api_key=os.getenv("CEREBRAS_API_KEY")
+    api_key=os.getenv("CEREBRAS_API_KEY") or "mock-key"
 )
 
 # Models loaded dynamically from environment variables

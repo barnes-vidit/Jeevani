@@ -8,6 +8,10 @@ export default {
     darkMode: 'class',
     theme: {
         extend: {
+            fontFamily: {
+                serif: ['"Playfair Display"', 'Georgia', 'serif'],
+                mono: ['"Courier Prime"', 'Courier New', 'monospace'],
+            },
             colors: {
                 background: "hsl(var(--background))",
                 foreground: "hsl(var(--foreground))",

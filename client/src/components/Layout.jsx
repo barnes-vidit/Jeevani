@@ -1,7 +1,7 @@
 
 import { UserButton, useUser } from "@clerk/clerk-react";
 import { Link, useLocation } from "react-router-dom";
-import { BookOpen, MessageSquare, UploadCloud, Menu, X, Feather, Sun, Moon } from "lucide-react";
+import { BookOpen, MessageSquare, UploadCloud, Menu, X, Feather, Sun, Moon, ChevronLeft } from "lucide-react";
 import Logo from "./Logo";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -78,15 +78,15 @@ export default function Layout({ children }) {
                         animate={{ x: 0, opacity: 1 }}
                         exit={{ x: -260, opacity: 0 }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        className={`w-[260px] border-r border-border bg-card shadow-sm flex flex-col z-40
+                        className={`w-[260px] border-r border-white/5 bg-[#05060A] text-[#F0EDE8] shadow-sm flex flex-col z-40
                             ${isMobile ? 'fixed inset-y-0 left-0' : 'relative'}`}
                     >
-                        <div className="p-6 flex items-center justify-between border-b border-border">
-                            <Logo withText={true} className="h-10 w-10" />
+                        <div className="p-6 flex items-center justify-between border-b border-white/5">
+                            <Logo withText={true} className="h-10 w-10" forceDark={true} />
                             {isMobile && (
                                 <button
                                     onClick={() => setSidebarOpen(false)}
-                                    className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground"
+                                    className="p-1.5 hover:bg-white/5 rounded-lg text-zinc-400 hover:text-white"
                                 >
                                     <X size={18} />
                                 </button>
@@ -101,8 +101,8 @@ export default function Layout({ children }) {
                                         key={item.path}
                                         to={item.path}
                                         className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${isActive
-                                            ? "bg-primary/10 text-primary font-medium"
-                                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                            ? "bg-[#F2C94C]/10 text-[#F2C94C] font-medium"
+                                            : "text-zinc-400 hover:bg-white/5 hover:text-white"
                                             }`}
                                     >
                                         <item.icon size={20} />
@@ -112,11 +112,11 @@ export default function Layout({ children }) {
                             })}
                         </nav>
 
-                        <div className="p-4 border-t border-border space-y-2">
+                        <div className="p-4 border-t border-white/5 space-y-2">
                             {/* Theme Toggle */}
                             <button
                                 onClick={toggleTheme}
-                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-muted text-muted-foreground hover:text-foreground transition-all duration-200"
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-white/5 text-zinc-400 hover:text-white transition-all duration-200"
                             >
                                 {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
                                 <span className="text-sm font-medium">
@@ -124,13 +124,13 @@ export default function Layout({ children }) {
                                 </span>
                             </button>
 
-                            <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted transition-colors">
-                                <UserButton afterSignOutUrl="/" appearance={{ baseTheme: theme === 'dark' ? dark : undefined }} />
+                            <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/5 transition-colors">
+                                <UserButton afterSignOutUrl="/" appearance={{ baseTheme: dark, variables: { colorPrimary: '#F2C94C' } }} />
                                 <div className="flex flex-col overflow-hidden">
-                                    <span className="text-sm font-medium truncate">
+                                    <span className="text-sm font-medium truncate text-white">
                                         {user?.fullName || user?.firstName}
                                     </span>
-                                    <span className="text-xs text-muted-foreground truncate">
+                                    <span className="text-xs text-zinc-400 truncate">
                                         {user?.primaryEmailAddress?.emailAddress}
                                     </span>
                                 </div>
@@ -146,9 +146,10 @@ export default function Layout({ children }) {
                 <header className="h-16 px-6 border-b border-border flex items-center justify-between bg-background/50 backdrop-blur-sm z-10">
                     <button
                         onClick={() => setSidebarOpen(!isSidebarOpen)}
-                        className="p-2 hover:bg-muted rounded-lg text-muted-foreground"
+                        className="p-2 hover:bg-muted rounded-lg text-muted-foreground transition-all duration-200"
+                        title={isSidebarOpen ? "Collapse Sidebar" : "Expand Sidebar"}
                     >
-                        {isSidebarOpen && !isMobile ? <X size={20} /> : <Menu size={20} />}
+                        {isSidebarOpen && !isMobile ? <ChevronLeft size={20} /> : <Menu size={20} />}
                     </button>
                 </header>
 

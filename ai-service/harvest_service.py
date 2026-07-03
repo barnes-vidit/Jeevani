@@ -28,18 +28,22 @@ class HarvestService:
         doc_map = {}
         for vec in memories:
             doc_id = vec.metadata.get('docId', vec.id)
+            mongo_doc = meta_lookup.get(doc_id, {})
+            cloud_url = mongo_doc.get('cloudUrl') or vec.metadata.get('cloudUrl', '')
+            is_image = vec.metadata.get('type') == 'image' or mongo_doc.get('fileType', '').startswith('image/')
+            
             if doc_id not in doc_map:
-                created_at = meta_lookup.get(doc_id, {}).get('createdAt', datetime.now())
+                created_at = mongo_doc.get('createdAt', datetime.now())
                 if not isinstance(created_at, datetime):
                     created_at = datetime.now()
                 doc_map[doc_id] = {
                     'doc_id': doc_id,
-                    'source_type': vec.metadata.get('type', 'document'),
-                    'original_name': vec.metadata.get('originalName', ''),
+                    'source_type': vec.metadata.get('type', mongo_doc.get('fileType', 'document')),
+                    'original_name': vec.metadata.get('originalName', mongo_doc.get('originalName', '')),
                     'chunks': [],
                     'created_at': created_at,
-                    'summary': meta_lookup.get(doc_id, {}).get('summary', ''),
-                    'image_url': vec.metadata.get('cloudUrl', '') if vec.metadata.get('type') == 'image' else ''
+                    'summary': mongo_doc.get('summary', ''),
+                    'image_url': cloud_url if is_image else ''
                 }
             chunk_text = vec.metadata.get('text', '')
             if chunk_text:
