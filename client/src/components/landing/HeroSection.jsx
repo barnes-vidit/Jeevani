@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '@clerk/clerk-react';
 import { gsap, ScrollTrigger, SplitText } from '../../lib/gsap';
 
 const MEMORIES = [
@@ -85,6 +86,7 @@ function buildDots(W, H) {
 }
 
 export default function HeroSection({ preloaderDone }) {
+  const { isSignedIn } = useAuth();
   const wrapperRef = useRef(null);
   const canvasRef = useRef(null);
   const introRef = useRef(null);
@@ -658,8 +660,8 @@ export default function HeroSection({ preloaderDone }) {
               Jeevani captures who you really are.
             </p>
             <div ref={ctasRef} className="hero-ctas">
-              <Link to="/auth/sign-up" className="hero-cta-primary">
-                Start Recording
+              <Link to={isSignedIn ? '/dashboard' : '/auth/sign-up'} className="hero-cta-primary">
+                {isSignedIn ? 'Go to Dashboard' : 'Start Recording'}
                 <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>

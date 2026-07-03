@@ -123,7 +123,7 @@ export default function Dashboard() {
         if (type.includes("audio")) return <Music className="text-pink-500" />;
         if (type.includes("image")) return <ImageIcon className="text-purple-500" />;
         if (type.includes("pdf")) return <FileText className="text-orange-500" />;
-        return <FileText className="text-blue-500" />;
+        return <FileText className="text-primary" />;
     };
 
     // Filter memories based on search
@@ -218,11 +218,11 @@ export default function Dashboard() {
                             />
                         </div>
 
-                        <div className="flex bg-muted rounded-lg p-1">
+                        <div className="flex bg-muted/60 border border-border/80 rounded-lg p-1 shadow-inner">
                             <button
                                 onClick={() => setViewMode('recent')}
                                 className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'recent'
-                                    ? 'bg-background text-foreground shadow-sm'
+                                    ? 'bg-card text-foreground shadow-sm border border-border/10'
                                     : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
@@ -231,7 +231,7 @@ export default function Dashboard() {
                             <button
                                 onClick={() => setViewMode('bucketed')}
                                 className={`flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'bucketed'
-                                    ? 'bg-background text-foreground shadow-sm'
+                                    ? 'bg-card text-foreground shadow-sm border border-border/10'
                                     : 'text-muted-foreground hover:text-foreground'
                                     }`}
                             >
@@ -250,7 +250,7 @@ export default function Dashboard() {
                         animate={{ opacity: 1, y: 0 }}
                         className="flex flex-col items-center justify-center py-16 px-8 border border-dashed border-border rounded-2xl bg-muted/10"
                     >
-                        <div className="w-20 h-20 bg-gradient-to-br from-primary/10 to-purple-500/10 rounded-full flex items-center justify-center mb-6">
+                        <div className="w-20 h-20 bg-gradient-to-br from-primary/10 to-amber-500/10 rounded-full flex items-center justify-center mb-6">
                             <FolderOpen size={36} className="text-primary/60" />
                         </div>
                         <h3 className="text-xl font-semibold mb-2">Your vault is empty</h3>

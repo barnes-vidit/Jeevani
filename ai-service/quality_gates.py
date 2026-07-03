@@ -25,7 +25,7 @@ CEREBRAS_RATE_LIMITER = AsyncRateLimiter(4.5)
 
 _client = AsyncOpenAI(
     base_url=os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
-    api_key=os.getenv("CEREBRAS_API_KEY")
+    api_key=os.getenv("CEREBRAS_API_KEY") or "mock-key"
 )
 _COHERENCE_MODEL = os.getenv("CEREBRAS_COHERENCE_MODEL", "llama-3.3-70b")
 _FACT_CHECKER_MODEL = os.getenv("CEREBRAS_FACT_CHECKER_MODEL", "llama-3.3-70b")

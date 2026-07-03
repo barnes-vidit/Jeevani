@@ -70,7 +70,10 @@ def get_mongo_db():
     global _mongo_client, _mongo_db
     if _mongo_db is None:
         _mongo_client = AsyncIOMotorClient(os.getenv("MONGODB_URI"))
-        _mongo_db = _mongo_client.get_default_database()
+        try:
+            _mongo_db = _mongo_client.get_default_database()
+        except Exception:
+            _mongo_db = _mongo_client['test']
     return _mongo_db
 
 class IngestRequest(BaseModel):
@@ -192,16 +195,18 @@ async def _run_memoir_pipeline(user_id: str, job_id: str):
     Background task: runs the full biography generation pipeline.
     Updates BiographyJob status in MongoDB as it progresses.
     """
-    db = get_mongo_db()
     object_id = ObjectId(job_id)
+    db = None
 
     async def update_progress(phase: str, pct: int):
-        await db['biographyjobs'].update_one(
-            {"_id": object_id},
-            {"$set": {"status": phase, "progress": pct, "currentPhase": phase}}
-        )
+        if db is not None:
+            await db['biographyjobs'].update_one(
+                {"_id": object_id},
+                {"$set": {"status": phase, "progress": pct, "currentPhase": phase}}
+            )
 
     try:
+        db = get_mongo_db()
         await update_progress('harvesting', 5)
 
         harvest = HarvestService(rag.index, db)
@@ -245,10 +250,14 @@ async def _run_memoir_pipeline(user_id: str, job_id: str):
 
     except Exception as e:
         print(f"[memoir] Pipeline failed for user {user_id}: {e}")
-        await db['biographyjobs'].update_one(
-            {"_id": object_id},
-            {"$set": {"status": "failed", "errorMessage": str(e)}}
-        )
+        try:
+            non_local_db = db if db is not None else get_mongo_db()
+            await non_local_db['biographyjobs'].update_one(
+                {"_id": object_id},
+                {"$set": {"status": "failed", "errorMessage": str(e)}}
+            )
+        except Exception as db_err:
+            print(f"[memoir] Could not write failure status to DB: {db_err}")
 
 @app.post("/memoir/generate", dependencies=[Depends(get_api_key)])
 async def memoir_generate(request: MemoirGenerateRequest, background_tasks: BackgroundTasks):

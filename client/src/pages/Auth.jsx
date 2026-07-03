@@ -19,15 +19,15 @@ export default function Auth() {
             <Routes>
                 <Route
                     path="sign-in/*"
-                    element={<SignIn routing="path" path="/auth/sign-in" signUpUrl="/auth/sign-up" forceRedirectUrl="/dashboard" appearance={{ baseTheme: dark }} />}
+                    element={<SignIn routing="path" path="/auth/sign-in" signUpUrl="/auth/sign-up" forceRedirectUrl="/dashboard" appearance={{ baseTheme: dark, variables: { colorPrimary: '#F2C94C' } }} />}
                 />
                 <Route
                     path="sign-up/*"
-                    element={<SignUp routing="path" path="/auth/sign-up" signInUrl="/auth/sign-in" forceRedirectUrl="/dashboard" appearance={{ baseTheme: dark }} />}
+                    element={<SignUp routing="path" path="/auth/sign-up" signInUrl="/auth/sign-in" forceRedirectUrl="/dashboard" appearance={{ baseTheme: dark, variables: { colorPrimary: '#F2C94C' } }} />}
                 />
                 <Route
                     path="*"
-                    element={<SignIn routing="path" path="/auth/sign-in" signUpUrl="/auth/sign-up" forceRedirectUrl="/dashboard" appearance={{ baseTheme: dark }} />}
+                    element={<SignIn routing="path" path="/auth/sign-in" signUpUrl="/auth/sign-up" forceRedirectUrl="/dashboard" appearance={{ baseTheme: dark, variables: { colorPrimary: '#F2C94C' } }} />}
                 />
             </Routes>
         </div>

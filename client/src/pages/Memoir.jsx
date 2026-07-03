@@ -22,41 +22,61 @@ const PHASE_LABELS = {
     failed:     "Generation failed",
 };
 
+const slugify = (str) => {
+    return str
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)+/g, "");
+};
+
+const getText = (node) => {
+    if (!node) return "";
+    if (typeof node === "string") return node;
+    if (Array.isArray(node)) return node.map(getText).join("");
+    if (node.props && node.props.children) return getText(node.props.children);
+    return "";
+};
+
 // Parse ## headings from markdown for chapter nav
 function extractChapters(text) {
     if (!text) return [];
     return text.split("\n")
-        .map((line, i) => ({ line, i }))
-        .filter(({ line }) => line.startsWith("## "))
-        .map(({ line, i }) => ({
-            id: `memoir-ch-${i}`,
-            title: line.replace(/^## /, "").trim(),
-        }));
+        .filter((line) => line.startsWith("## "))
+        .map((line) => {
+            const title = line.replace(/^## /, "").trim();
+            return {
+                id: `ch-${slugify(title)}`,
+                title: title,
+            };
+        });
 }
 
 // Build components for react-markdown that add scroll IDs to ## headings
-function buildMarkdownComponents(chapters) {
-    let chapterIndex = 0;
+function buildMarkdownComponents() {
     return {
         h1: ({ children }) => (
-            <h1 className="text-3xl font-bold text-center mt-10 mb-6 text-foreground">
+            <h1 className="text-4xl font-extrabold text-center font-serif mt-12 mb-10 text-foreground tracking-tight leading-tight border-b-2 border-primary/20 pb-6 max-w-2xl mx-auto">
                 {children}
             </h1>
         ),
         h2: ({ children }) => {
-            const id = chapters[chapterIndex]?.id || `memoir-ch-${chapterIndex}`;
-            chapterIndex++;
+            const text = getText(children);
+            const id = `ch-${slugify(text)}`;
             return (
-                <h2
-                    id={id}
-                    className="text-2xl font-semibold mt-10 mb-4 text-foreground border-b border-border pb-2 scroll-mt-6"
-                >
-                    {children}
-                </h2>
+                <div id={id} className="text-center mt-16 mb-8 scroll-mt-10">
+                    <h2 className="text-3xl font-bold font-serif text-foreground tracking-wide">
+                        {children}
+                    </h2>
+                    <div className="flex justify-center gap-1.5 mt-3 text-primary/30 text-lg select-none">
+                        <span>·</span>
+                        <span>·</span>
+                        <span>·</span>
+                    </div>
+                </div>
             );
         },
         h3: ({ children }) => (
-            <h3 className="text-lg font-medium mt-6 mb-2 text-foreground">{children}</h3>
+            <h3 className="text-lg font-semibold font-serif mt-8 mb-3 text-foreground/95">{children}</h3>
         ),
         p: ({ children }) => (
             <p className="text-base leading-8 text-foreground/90 mb-5">{children}</p>
@@ -92,11 +112,11 @@ function EmptyState({ onGenerate, generating, error }) {
                 transition={{ duration: 0.5 }}
                 className="max-w-md space-y-6"
             >
-                <div className="mx-auto w-24 h-24 bg-gradient-to-br from-indigo-500/20 to-purple-600/20 rounded-full flex items-center justify-center">
+                <div className="mx-auto w-24 h-24 bg-gradient-to-br from-primary/20 to-amber-500/10 rounded-full flex items-center justify-center">
                     <Book size={48} className="text-primary" />
                 </div>
 
-                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-amber-500 bg-clip-text text-transparent">
                     Life Sketch
                 </h1>
 
@@ -217,7 +237,7 @@ function ProgressView({ jobStatus }) {
 const ERA_COLORS = {
     childhood:   "bg-yellow-400/80",
     youth:       "bg-green-400/80",
-    early_adult: "bg-blue-400/80",
+    early_adult: "bg-amber-500/80",
     adult:       "bg-purple-400/80",
     recent:      "bg-rose-400/80",
 };
@@ -400,7 +420,7 @@ function BiographyReader({ manuscript, chapters, activeChapter, onChapterClick, 
             </div>
 
             {/* Main reading area */}
-            <div className="flex-1 overflow-y-auto">
+            <div id="biography-reader-container" className="flex-1 overflow-y-auto">
                 <div className="max-w-3xl mx-auto px-8 py-10">
                     <AnimatePresence mode="wait">
                         <motion.article
@@ -411,7 +431,7 @@ function BiographyReader({ manuscript, chapters, activeChapter, onChapterClick, 
                             className="prose prose-neutral dark:prose-invert max-w-none"
                             style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                         >
-                            <ReactMarkdown components={buildMarkdownComponents(chapters)}>
+                            <ReactMarkdown components={buildMarkdownComponents()}>
                                 {manuscript.manuscript}
                             </ReactMarkdown>
                         </motion.article>
@@ -530,7 +550,16 @@ export default function Memoir() {
     const scrollToChapter = (chapterId) => {
         setActiveChapter(chapterId);
         const el = document.getElementById(chapterId);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+        const container = document.getElementById("biography-reader-container");
+        if (el && container) {
+            const containerTop = container.getBoundingClientRect().top;
+            const elementTop = el.getBoundingClientRect().top;
+            const scrollOffset = elementTop - containerTop + container.scrollTop - 20;
+            container.scrollTo({
+                top: scrollOffset,
+                behavior: "smooth"
+            });
+        }
     };
 
     const handleExportPdf = async () => {

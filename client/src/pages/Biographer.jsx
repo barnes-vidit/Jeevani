@@ -252,7 +252,7 @@ export default function Biographer() {
                 {/* Chat Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card/50 backdrop-blur-sm z-10 h-16 shrink-0">
                     <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-indigo-500/20">
+                        <div className="h-9 w-9 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
                             <Sparkles size={18} fill="currentColor" className="text-white/90" />
                         </div>
                         <div>
@@ -295,19 +295,28 @@ export default function Biographer() {
                         {messages.map((msg, idx) => (
                             <div key={idx} className={`flex items-start gap-4 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
                                 {/* Avatar */}
-                                <div className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${msg.role === "user"
-                                    ? "bg-primary text-primary-foreground"
-                                    : "bg-gradient-to-br from-indigo-500 to-purple-600 text-white"
-                                    }`}>
-                                    {msg.role === "user" ? <User size={16} /> : <Sparkles size={14} fill="currentColor" />}
-                                </div>
+                                {msg.role === "user" ? (
+                                    <div className="shrink-0 w-8 h-8 rounded-full overflow-hidden ring-2 ring-primary/20">
+                                        {user?.imageUrl ? (
+                                            <img src={user.imageUrl} alt="You" className="w-full h-full object-cover" />
+                                        ) : (
+                                            <div className="w-full h-full bg-primary flex items-center justify-center text-primary-foreground">
+                                                <User size={16} />
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white">
+                                        <Sparkles size={14} fill="currentColor" />
+                                    </div>
+                                )}
 
                                 {/* Message Content */}
                                 <div className={`flex-1 min-w-0 ${msg.role === "user" ? "flex justify-end" : ""}`}>
-                                    <div className={`text-[15px] leading-7 ${msg.role === "user"
-                                        ? "bg-primary text-primary-foreground dark:text-white px-5 py-2.5 rounded-[20px] rounded-tr-md max-w-[85%]"
-                                        : "prose dark:prose-invert max-w-none text-foreground/90"
-                                        }`}>
+                                    <div className={msg.role === "user"
+                                        ? "bg-primary text-primary-foreground dark:text-white px-5 py-2.5 rounded-[20px] rounded-tr-md max-w-[85%] text-[15px] leading-7 font-sans"
+                                        : "max-w-none text-foreground/90 text-[15px] leading-7 font-sans"
+                                    }>
                                         {msg.role === "user" ? (
                                             <div className="whitespace-pre-wrap">{msg.content}</div>
                                         ) : (
@@ -321,7 +330,7 @@ export default function Biographer() {
                         ))}
                         {loading && (
                             <div className="flex items-start gap-4 max-w-3xl mx-auto">
-                                <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white">
+                                <div className="shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white">
                                     <Sparkles size={14} fill="currentColor" />
                                 </div>
                                 <div className="flex gap-1.5 pt-3 pl-2">
@@ -338,7 +347,7 @@ export default function Biographer() {
                 <div className="p-4 bg-background/80 backdrop-blur-sm relative z-20">
                     <div className="max-w-3xl mx-auto">
                         <form onSubmit={handleSend} className="relative group">
-                            <div className="relative flex items-center bg-muted/40 hover:bg-muted/60 border border-border/50 hover:border-border rounded-[26px] transition-all shadow-sm focus-within:shadow-md focus-within:border-primary/20 focus-within:bg-background focus-within:ring-2 focus-within:ring-primary/10">
+                            <div className="relative flex items-center bg-card border border-border rounded-[26px] transition-all shadow-md hover:shadow-lg focus-within:shadow-lg focus-within:border-primary/30 focus-within:ring-4 focus-within:ring-primary/5">
                                 <button
                                     type="button"
                                     onClick={startListening}
