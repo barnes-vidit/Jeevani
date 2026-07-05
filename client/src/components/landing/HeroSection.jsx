@@ -119,6 +119,9 @@ export default function HeroSection({ preloaderDone }) {
   const velRef = useRef(0); // scroll velocity for hyperspace
   // Track convergence progress so onLeave can restore scroll-driven card positions
   const convergeProgressRef = useRef(0);
+  // Progressive particle activation: ramps from 300 → full count over ~1.5 s
+  // All dots are built upfront so positions are final; we just delay iteration.
+  const visibleCountRef = useRef(300);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -135,7 +138,18 @@ export default function HeroSection({ preloaderDone }) {
     const cy = H / 2;
 
     const dots = buildDots(W, H);
+    const totalDots = dots.length;
     let cancelled = false;
+
+    // Ramp visible particle count from initial 300 → all dots over ~1.5 s
+    // Steps of ~150 every 200 ms — smooth enough to be imperceptible.
+    const rampInterval = setInterval(() => {
+      if (visibleCountRef.current >= totalDots) {
+        clearInterval(rampInterval);
+        return;
+      }
+      visibleCountRef.current = Math.min(totalDots, visibleCountRef.current + 150);
+    }, 200);
 
     function loop() {
       if (cancelled) return;
@@ -155,7 +169,9 @@ export default function HeroSection({ preloaderDone }) {
       const cur = cursorRef.current;
       const reveal = revealRef.current;
 
-      for (const d of dots) {
+      const activeCount = visibleCountRef.current;
+      for (let di = 0; di < activeCount; di++) {
+        const d = dots[di];
         d.x += d.vx;
         d.y += d.vy;
         d.alpha += d.tSpeed * d.tDir;
@@ -435,6 +451,7 @@ export default function HeroSection({ preloaderDone }) {
 
     return () => {
       cancelled = true;
+      clearInterval(rampInterval);
       revealTween.kill();
       gsapCtx.revert();
       window.removeEventListener('scroll', onScroll);
