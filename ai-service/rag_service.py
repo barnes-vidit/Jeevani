@@ -6,6 +6,16 @@ import time
 from google import genai
 from google.genai import types
 
+# Common words that add noise when matching query terms against file names.
+# Filtered out before keyword re-ranking so only meaningful terms contribute.
+_STOPWORDS = {
+    'a', 'an', 'the', 'and', 'or', 'in', 'on', 'at', 'to', 'for', 'of',
+    'my', 'your', 'his', 'her', 'our', 'its', 'was', 'is', 'are', 'be',
+    'been', 'with', 'by', 'from', 'this', 'that', 'it', 'me', 'he', 'she',
+    'we', 'they', 'but', 'not', 'what', 'when', 'how', 'did', 'do', 'about',
+    'tell', 'me', 'you', 'i', 'am', 'so', 'just', 'like', 'more', 'some',
+}
+
 
 class PineconeRAG:
     def __init__(self):
@@ -61,35 +71,45 @@ class PineconeRAG:
         print("Embedding length:", len(embedding))
         return embedding
 
-    def ingest_text(self, text: str, meta: Dict, chunk_size: int = 1000) -> int:
-        """Chunk text, embed, and upsert to Pinecone"""
+    def ingest_text(self, text: str, meta: Dict, chunk_size: int = 1000) -> Dict:
+        """Chunk text, embed, and upsert to Pinecone.
+
+        Returns a dict with:
+          - chunks_processed (int): total number of chunks
+          - chunks (list[dict]): ordered list of {index, text} for MongoDB storage
+        """
         chunks = self._chunk_text(text, chunk_size)
         vectors = []
-        
+        chunk_records = []  # For MongoDB persistence (Decision 3)
+
         base_id = f"{meta.get('userId')}_{meta.get('docId')}"
-        
+
         for i, chunk in enumerate(chunks):
             embedding = self.embed_text(chunk)
             vector_id = f"{base_id}_{i}"
-            
+
+            # Store only pointer metadata in Pinecone — full text lives in MongoDB (Decision 6)
             metadata = meta.copy()
-            metadata['text'] = chunk
             metadata['chunk_index'] = i
-            
+            # NOTE: 'text' is intentionally NOT stored here; MongoDB is the text source of truth
+
             vectors.append({
                 "id": vector_id,
                 "values": embedding,
                 "metadata": metadata
             })
-            
+
+            chunk_records.append({"index": i, "text": chunk})
+
             if len(vectors) >= 50:
                 self.index.upsert(vectors=vectors)
                 vectors = []
-        
+
         if vectors:
             self.index.upsert(vectors=vectors)
-            
-        return len(chunks)
+
+        return {"chunks_processed": len(chunks), "chunks": chunk_records}
+
 
     def generate_summary(self, text: str, original_name: str) -> str:
         """Generate a 2-3 sentence summary of a document using the LLM."""
@@ -148,54 +168,88 @@ class PineconeRAG:
         
         return chunks
 
-    def query_answer(self, query: str, user_id: str, chat_history: List[Dict] = None) -> str:
-        """RAG Query Flow with optional conversation history."""
-        # 1. Embed Query
-        try:
-            q_embedding = self.embed_text(query)
-        except Exception as embed_error:
-            raise embed_error
-        
-        # 2. Hybrid Search: semantic + keyword re-ranking (item 19)
+    def search_similar(self, query: str, user_id: str, top_k: int = 10) -> List[Dict]:
+        """Search Pinecone for semantically relevant vector IDs.
+
+        Returns a list of dicts with keys:
+          - vector_id  (str):  full Pinecone vector ID, e.g. '{userId}_{docId}_{chunkIndex}'
+          - doc_id     (str):  MongoDB Memory _id
+          - chunk_index (int): chunk position within that document
+          - original_name (str): human-readable file name
+          - score      (float): cosine similarity score
+          - source_type (str): 'text', 'image', 'audio', 'chat', etc.
+
+        Text is NOT returned here; caller must fetch it from MongoDB.
+        """
+        q_embedding = self.embed_text(query)
+
         results = self.index.query(
             vector=q_embedding,
-            top_k=10,  # Over-fetch for re-ranking
+            top_k=top_k,
             filter={"userId": user_id},
             include_metadata=True
         )
-        
-        # Keyword re-ranking: boost results that share keywords with the query
-        query_keywords = set(query.lower().split())
+
+        # Keyword re-ranking on file name tokens.
+        # Stopwords are filtered to prevent common words ('my', 'the', 'was')
+        # from incorrectly boosting unrelated files.
+        # Weight is 0.1 (down from 0.3) because file names carry limited signal;
+        # the contextual query embedding (Phase A) makes cosine dominant.
+        query_keywords = set(query.lower().split()) - _STOPWORDS
         ranked = []
         for match in results.matches:
-            text = match.metadata.get('text', '') if match.metadata else ''
-            chunk_words = set(text.lower().split())
-            overlap = len(query_keywords & chunk_words)
-            keyword_score = overlap / max(len(query_keywords), 1)
-            # Weighted combination: 70% semantic, 30% keyword
-            hybrid_score = 0.7 * match.score + 0.3 * keyword_score
+            meta = match.metadata or {}
+            # Split on both spaces and underscores/hyphens common in file names
+            raw_name = meta.get('originalName', '').lower().replace('_', ' ').replace('-', ' ')
+            name_words = set(raw_name.split()) - _STOPWORDS
+            overlap = len(query_keywords & name_words)
+            keyword_score = overlap / max(len(query_keywords), 1) if query_keywords else 0
+            hybrid_score = 0.9 * match.score + 0.1 * keyword_score
             ranked.append((hybrid_score, match))
-        
-        ranked.sort(key=lambda x: x[0], reverse=True)
-        top_matches = [m for _, m in ranked[:5]]
-        
-        # 3. Construct Context
-        context_parts = []
-        for match in top_matches:
-            if match.metadata and 'text' in match.metadata:
-                context_parts.append(f"Source ({match.score:.2f}): {match.metadata.get('originalName', 'Unknown')}\n{match.metadata['text']}")
-        
-        context = "\n\n".join(context_parts)
-        
-        if not context:
-            context = "[No relevant archived memories found. Rely on the user's input.]"
 
+        ranked.sort(key=lambda x: x[0], reverse=True)
+
+        matches = []
+        for hybrid_score, match in ranked[:5]:
+            meta = match.metadata or {}
+            # Parse docId and chunkIndex from the vector ID: '{userId}_{docId}_{chunkIndex}'
+            parts = match.id.rsplit('_', 1)
+            chunk_index = int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 0
+            doc_id = meta.get('docId', '')
+            matches.append({
+                'vector_id': match.id,
+                'doc_id': doc_id,
+                'chunk_index': chunk_index,
+                'original_name': meta.get('originalName', 'Unknown'),
+                'score': hybrid_score,
+                'source_type': meta.get('type', 'document'),
+            })
+
+        return matches
+
+    def generate_answer(
+        self,
+        context_parts: List[Dict],
+        query: str,
+        chat_history: List[Dict] = None
+    ) -> str:
+        """Generate a biographer response given pre-fetched context chunks.
+
+        context_parts: list of dicts with 'original_name', 'score', 'text' keys.
+        """
         if not self.groq_client:
             return "Error: AI Service not fully initialized (Missing Groq Client). Please check GROQ_API_KEY."
 
-        # 4. Build conversation messages for multi-turn context
+        if context_parts:
+            context = "\n\n".join(
+                f"Source ({c.get('score', 0):.2f}): {c.get('original_name', 'Unknown')}\n{c.get('text', '')}"
+                for c in context_parts
+            )
+        else:
+            context = "[No relevant archived memories found. Rely on the user's input.]"
+
         system_msg = {"role": "system", "content": "You are a helpful personal biographer assistant named Jeevani."}
-        
+
         prompt = f"""You are 'Jeevani', a personal biographer. Use the context below to answer the user's question or continue the conversation.
 
 Context:
@@ -218,17 +272,14 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
 - Use short, readable paragraphs.
 - End with **ONE** quality follow-up question (if appropriate)."""
 
-        # Build messages array with conversation history for multi-turn
         messages = [system_msg]
-        
         if chat_history:
-            # Include up to 10 recent messages for context
-            for msg in chat_history[-10:]:
+            # 20-turn window (Phase A): covers ~30-40 min of typical session
+            # without hitting token limits (Groq 128k context, messages are short)
+            for msg in chat_history[-20:]:
                 messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-        
         messages.append({"role": "user", "content": prompt})
 
-        # 5. Generate Answer with Groq
         completion = self.groq_client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -239,6 +290,7 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
             stop=None,
         )
         return completion.choices[0].message.content
+
 
     def delete_document(self, user_id: str, doc_id: str):
         """Delete vectors for a specific document"""
@@ -260,30 +312,71 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
         last_chat = context.get('last_chat', '')
         on_this_day = context.get('on_this_day', [])
         date_str = context.get('current_date', '')
+        life_summary = context.get('life_summary', '')
+        # Phase B: domain depth map from UserProfile
+        covered_domains: dict = context.get('covered_domains', {}) or {}
+
+        # Build the life portrait section
+        life_summary_section = (
+            f"\n- **Cumulative Life Portrait:** {life_summary}"
+            if life_summary else ""
+        )
+
+        # Build domain gap section — what areas need more exploration
+        domain_gap_section = ""
+        if covered_domains:
+            unexplored = [d.replace('_', ' ') for d, v in covered_domains.items()
+                          if v in ('none', 'low')]
+            explored   = [d.replace('_', ' ') for d, v in covered_domains.items()
+                          if v in ('medium', 'high')]
+            if unexplored:
+                domain_gap_section = (
+                    f"\n- **Unexplored Life Areas (priority targets):** {', '.join(unexplored)}"
+                    + (f"\n- **Well-documented areas:** {', '.join(explored)}" if explored else "")
+                )
 
         prompt = f"""
-You are Jeevani, a personal biographer. Your goal is to start a conversation with {user_name} ({date_str}).
-Your tone is warm, empathetic, and curious—like an old friend catching up over coffee.
+You are Jeevani, a personal biographer. Your goal is to open a conversation with {user_name} ({date_str}).
+Your tone is warm, empathetic, and deeply curious — like an old friend who genuinely wants to understand.
 
-**Context:**
+**What you know:**
 - **Recent Uploads (Last 48h):** {uploads if uploads else "None"}
-- **On This Day (Past Years):** {on_this_day if on_this_day else "None"}
-- **Last Conversation Summary:** "{last_chat}"
+- **Last Conversation Thread:** "{last_chat}"{life_summary_section}{domain_gap_section}
+- **On This Day (archive):** {on_this_day if on_this_day else "None"}
 
-**Decision Logic (Prioritize in order):**
-1. **The Time Capsule:** If 'On This Day' has items, asking about that specific memory is PRIORITY #1. "I saw that X years ago today..." or "This day seems special in your history..."
-2. **The Detective:** If 'Recent Uploads' exist, ask a specific question about one of them. "I noticed you shared [File]. It looks like a precious memory. What's the story behind it?"
-3. **The Empath:** If 'Last Conversation' was sad, emotional, or unresolved, follow up on it gently.
-4. **The Storyteller (Default):** If none of the above apply, pick ONE of these random angles to ask a deep life question:
-    - *Values*: "What is a lesson from your childhood that you still carry today?"
-    - *Unsung Heroes*: "Who is someone who supported you silently?"
-    - *Mischief*: "What is a rule you broke in the past?"
-    - *Pattern Matcher*: Ask about a habit or recurring theme you've noticed.
+**Decision Logic — pick exactly ONE opening (prioritize top down):**
 
-**Constraint:**
-- Generate ONLY the greeting/question.
-- Keep it under 2 sentences.
-- Be specific to the available context.
+1. **The Detective:** If 'Recent Uploads' exist, ask ONE specific, human question about one file.
+   Example: "I noticed you shared [File] — what's the story behind it?"
+   Be concrete and curious, never generic.
+
+2. **The Empath:** If 'Last Conversation Thread' captures something emotional, unresolved, or mid-story,
+   return to it warmly. Example: "Last time you started talking about [X] — I've been thinking about it."
+
+3. **The Arc Builder:** If 'Unexplored Life Areas' are listed, pick the most human-feeling one and
+   open there naturally. Do NOT say "I noticed you haven't discussed X."
+   Instead, frame it as genuine curiosity:
+   - relationships → "Who has been the most important person in your life, and why?"
+   - failures → "Is there a decision you made that you've since learned the most from?"
+   - childhood → "What is your earliest memory that still feels vivid to you today?"
+   - values → "What principle did someone you admired live by that stayed with you?"
+   - family → "Who in your family shaped who you are in a way that surprises you?"
+   - education → "What's the most important thing you ever learned — inside or outside a classroom?"
+   - current_life → "What does a typical day feel like for you right now?"
+
+4. **The Storyteller:** If none of the above apply, pick ONE deep question:
+   - "What is one moment that changed how you see the world?"
+   - "Who shaped you quietly, without fanfare — and how?"
+   - "Is there something you believed strongly as a young person that you've since reversed?"
+   - "What is a smell, sound, or place that takes you back instantly?"
+
+5. **The Time Capsule (last resort only):** Only if 'On This Day' has items AND none of the above apply.
+
+**Hard constraints:**
+- Output ONLY the greeting question. Nothing else.
+- Maximum 2 sentences.
+- Never say "I noticed you haven't discussed..." or "According to your profile..."
+- Be specific, not abstract. Sound like a person, not a form.
 """
         if not self.groq_client:
             return f"Hello {user_name}, I'm ready to document your story. (AI Not Connected)"
@@ -292,7 +385,7 @@ Your tone is warm, empathetic, and curious—like an old friend catching up over
             completion = self.groq_client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": "You are a helpful personal biographer assistant."},
+                    {"role": "system", "content": "You are Jeevani, a warm and deeply curious personal biographer."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.8,

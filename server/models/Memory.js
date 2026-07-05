@@ -36,6 +36,17 @@ const MemorySchema = new mongoose.Schema({
         type: String,
         default: ''
     },
+    // Full processed text stored as ordered chunks.
+    // Pinecone holds embeddings + pointer IDs only; this is the source of truth.
+    chunks: {
+        type: [
+            {
+                index: { type: Number, required: true },
+                text:  { type: String, required: true }
+            }
+        ],
+        default: []
+    },
     createdAt: {
         type: Date,
         default: Date.now

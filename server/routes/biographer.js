@@ -46,11 +46,30 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
 
         const recentUploads = recentUploadsDocs.map(d => d.originalName);
 
-        // 2. Last Chat Summary (Get last entry)
-        const lastEntry = await JournalEntry.findOne({ userId }).sort({ date: -1 });
+        // 2. Life Profile (Phase B: cumulative UserProfile) + last conversation thread
+        const UserProfile = require('../models/UserProfile');
+        const [lastEntry, userProfile] = await Promise.all([
+            JournalEntry.findOne({ userId }).sort({ date: -1 }),
+            UserProfile.findOne({ userId })
+        ]);
+
         let lastChat = "";
+        let lifeSummary = "";
+        let coveredDomains = {};
+
+        // UserProfile is primary: cumulative portrait built across all sessions
+        if (userProfile && userProfile.cumulativeProfile) {
+            lifeSummary = userProfile.cumulativeProfile;
+            coveredDomains = userProfile.toObject().coveredDomains || {};
+        } else if (lastEntry && lastEntry.summary) {
+            // Fallback: single-session summary while profile is still being built
+            lifeSummary = lastEntry.summary;
+        }
+
+        // Capture the unresolved/emotional thread from the most recent conversation.
+        // Used by the Empath greeting priority — independent of whether a summary exists.
+        // A summarised session can still have had a thread worth continuing.
         if (lastEntry && lastEntry.messages.length > 0) {
-            // Get last 2 messages
             const lastMsgs = lastEntry.messages.slice(-2);
             lastChat = lastMsgs.map(m => `${m.role}: ${m.content}`).join(" | ");
         }
@@ -85,7 +104,9 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
             recent_uploads: recentUploads,
             last_chat: lastChat,
             on_this_day: onThisDay,
-            current_date: now.toDateString()
+            current_date: now.toDateString(),
+            life_summary: lifeSummary,       // Phase B: cumulative portrait
+            covered_domains: coveredDomains  // Phase B: domain depth map for gap targeting
         };
 
 
@@ -212,8 +233,8 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
         let chatHistory = [];
         const todayEntry = await JournalEntry.findOne({ userId, date: today });
         if (todayEntry && todayEntry.messages.length > 0) {
-            // Send last 10 messages for context
-            chatHistory = todayEntry.messages.slice(-10).map(m => ({
+            // 20-turn window (Phase A): ~30-40 min of session, negligible token cost on Groq 128k
+            chatHistory = todayEntry.messages.slice(-20).map(m => ({
                 role: m.role,
                 content: m.content
             }));
@@ -232,8 +253,7 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
         const answer = aiResponse.data.answer;
 
         // Save to Journal Entry (Daily Bucket)
-
-        await JournalEntry.findOneAndUpdate(
+        const savedEntry = await JournalEntry.findOneAndUpdate(
             { userId, date: today },
             {
                 $push: {
@@ -248,6 +268,20 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
             { upsert: true, new: true }
         );
 
+        // Decision 2: fire-and-forget embedding of user message into Pinecone
+        // so the biographer can semantically recall past conversations.
+        // Uses synthetic docId 'chat_{journalId}_{timestamp}' to namespace chat vectors.
+        if (savedEntry) {
+            const chatDocId = `chat_${savedEntry._id.toString()}_${Date.now()}`;
+            axios.post(`${AI_SERVICE_URL}/ingest/text`,
+                { userId, docId: chatDocId, text: message, originalName: `Chat on ${today}`, type: 'chat' },
+                { headers, timeout: 30000 }
+            ).catch(err => {
+                console.warn('[biographer] Chat embedding failed (non-fatal):', err.message);
+            });
+        }
+
+
         res.json({
             answer: answer,
             sender: 'biographer'
@@ -256,6 +290,37 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
     } catch (err) {
         console.error("AI Chat Error:", err.response?.status, err.response?.data || err.message, err.code, `URL: ${AI_SERVICE_URL}/chat`);
         res.status(500).json({ error: 'Error communicating with Biographer', detail: err.response?.data || err.message });
+    }
+});
+
+// @route   POST /api/biographer/summarise
+// @desc    Trigger AI service to summarise today's session into a life-profile snippet (Decision 4)
+// @access  Private
+router.post('/summarise', ensureAuthenticated, async (req, res) => {
+    try {
+        const { userId } = req.auth();
+        const today = new Date().toISOString().split('T')[0];
+
+        // Find today's (or the most recent) journal entry
+        const entry = await JournalEntry.findOne({ userId, date: today })
+            || await JournalEntry.findOne({ userId }).sort({ date: -1 });
+
+        if (!entry) {
+            return res.json({ status: 'no_entry', summary: '' });
+        }
+
+        // Fire-and-forget to AI service — caller does not need to wait
+        const headers = { 'X-API-Key': process.env.AI_SERVICE_API_KEY || 'dev-secret-key' };
+        const aiResponse = await axios.post(`${AI_SERVICE_URL}/chat/summarise`, {
+            userId,
+            journalEntryId: entry._id.toString()
+        }, { headers, timeout: 60000 });
+
+        res.json({ status: 'ok', summary: aiResponse.data.summary || '' });
+    } catch (error) {
+        console.error('[biographer] Summarise error:', error.response?.data || error.message);
+        // Non-fatal — the user's session is still saved
+        res.json({ status: 'error', summary: '' });
     }
 });
 
