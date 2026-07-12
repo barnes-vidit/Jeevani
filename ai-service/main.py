@@ -180,11 +180,16 @@ async def _fetch_chunk_texts(matches: list) -> list:
                 for c in doc['chunks']:
                     chunk_map[c['index']] = c['text']
         except Exception:
-            # doc_id is not a valid ObjectId (e.g. a chat vector) — chunk_map stays empty
+            # doc_id is not a valid ObjectId (e.g. a chat vector whose text is stored
+            # inline in Pinecone metadata).  chunk_map stays empty; the inline text
+            # is read directly from the match dict below.
             pass
 
         for m in doc_matches:
-            text = chunk_map.get(m['chunk_index'], '[text unavailable]')
+            # For regular documents, text comes from MongoDB (chunk_map).
+            # For chat vectors, MongoDB lookup always fails; fall back to the text
+            # stored inline in Pinecone metadata (populated by ingest_text for type='chat').
+            text = chunk_map.get(m['chunk_index']) or m.get('pinecone_text')
             result_by_vector_id[m['vector_id']] = {
                 'vector_id': m['vector_id'],
                 'original_name': m['original_name'],
@@ -307,12 +312,17 @@ async def summarise_session(request: SummariseRequest):
         if not user_messages:
             return {"summary": "", "status": "no_user_messages"}
 
-        conversation_text = "\n".join(f"- {m}" for m in user_messages)
+        # Include full dialogue (both user and assistant) so the summariser can judge
+        # which life domains were genuinely explored in depth, not just what was said.
+        conversation_text = "\n".join(
+            f"{'User' if m.get('role') == 'user' else 'Jeevani'}: {m['content']}"
+            for m in messages
+        )
         groq_client = get_groq_client()
 
         # ── Call 1: session summary (plain text) ────────────────────────────
         session_completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
             messages=[
                 {
                     "role": "system",
@@ -349,7 +359,7 @@ async def summarise_session(request: SummariseRequest):
         existing_domains = existing_doc.get('coveredDomains', {}) if existing_doc else {}
 
         profile_completion = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
             response_format={"type": "json_object"},
             messages=[
                 {

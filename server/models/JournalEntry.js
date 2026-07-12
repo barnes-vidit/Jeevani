@@ -16,7 +16,8 @@ const JournalEntrySchema = new mongoose.Schema({
     created_at: { type: Date, default: Date.now }
 });
 
-// Compound index to ensure one entry per user per day is unique (if we want strict enforcement)
-// JournalEntrySchema.index({ userId: 1, date: 1 }, { unique: true });
+// Unique compound index: one entry per user per day.
+// Prevents duplicate day-buckets from concurrent upserts.
+JournalEntrySchema.index({ userId: 1, date: 1 }, { unique: true });
 
 module.exports = mongoose.model('JournalEntry', JournalEntrySchema);

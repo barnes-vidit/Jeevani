@@ -8,13 +8,18 @@ export default function Biographer() {
     const { getToken } = useAuth();
     const { user } = useUser();
 
-
-
     // Chat State
     const [messages, setMessages] = useState([]); // Start empty, fetch greeting
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
+
+    // Keep a ref in sync so the unmount cleanup can read the latest messages/token
+    // without depending on stale closure values.
+    const messagesRef = useRef([]);
+    const getTokenRef = useRef(getToken);
+    useEffect(() => { messagesRef.current = messages; }, [messages]);
+    useEffect(() => { getTokenRef.current = getToken; }, [getToken]);
 
     // Strict Lock: Use ref to prevent double-firing in Strict Mode
     const hasFetchedGreeting = useRef(false);
@@ -111,6 +116,31 @@ export default function Biographer() {
                 window.speechRecognitionInstance.stop();
             }
         };
+    }, []);
+
+    // Session summarise: fire-and-forget on unmount when a real conversation happened.
+    // This populates UserProfile.life_summary and JournalEntry.session_summary so that
+    // the greeting endpoint's personalisation logic has data to work with.
+    useEffect(() => {
+        return () => {
+            const currentMessages = messagesRef.current;
+            // Only summarise if at least one user message was exchanged
+            // (greeting alone = 1 message, a real exchange = 2+)
+            if (currentMessages.length < 2) return;
+            const hasUserMessage = currentMessages.some(m => m.role === 'user');
+            if (!hasUserMessage) return;
+
+            getTokenRef.current().then(token => {
+                // Fire-and-forget — we don't await or surface errors to the user
+                api.post('/biographer/summarise', {}, {
+                    headers: { Authorization: `Bearer ${token}` }
+                }).catch(err => {
+                    console.warn('[Biographer] Session summarise failed (non-fatal):', err.message);
+                });
+            }).catch(() => { /* token fetch failed, skip summarise */ });
+        };
+    // Empty deps: run cleanup only on true unmount, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Debounce search
@@ -314,7 +344,7 @@ export default function Biographer() {
                                 {/* Message Content */}
                                 <div className={`flex-1 min-w-0 ${msg.role === "user" ? "flex justify-end" : ""}`}>
                                     <div className={msg.role === "user"
-                                        ? "bg-primary text-primary-foreground dark:text-white px-5 py-2.5 rounded-[20px] rounded-tr-md max-w-[85%] text-[15px] leading-7 font-sans"
+                                        ? "bg-primary text-primary-foreground px-5 py-2.5 rounded-[20px] rounded-tr-md max-w-[85%] text-[15px] leading-7 font-sans"
                                         : "max-w-none text-foreground/90 text-[15px] leading-7 font-sans"
                                     }>
                                         {msg.role === "user" ? (

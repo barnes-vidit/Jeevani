@@ -31,7 +31,7 @@ class PineconeRAG:
             
             groq_key = os.getenv("GROQ_API_KEY")
             self.groq_client = Groq(api_key=groq_key)
-            self.model = "llama-3.3-70b-versatile"
+            self.model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
             
             # Configure Pinecone
             self.pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
@@ -88,10 +88,14 @@ class PineconeRAG:
             embedding = self.embed_text(chunk)
             vector_id = f"{base_id}_{i}"
 
-            # Store only pointer metadata in Pinecone — full text lives in MongoDB (Decision 6)
+            # Decision 6: for regular documents, text lives in MongoDB (pointer-only metadata).
+            # Exception: chat vectors use synthetic docIds that are not valid ObjectIds, so
+            # MongoDB lookup in _fetch_chunk_texts would always fail.  Store the chunk text
+            # directly in Pinecone metadata for type='chat' so retrieval still works.
             metadata = meta.copy()
             metadata['chunk_index'] = i
-            # NOTE: 'text' is intentionally NOT stored here; MongoDB is the text source of truth
+            if meta.get('type') == 'chat':
+                metadata['text'] = chunk  # inline text for synthetic-ID vectors
 
             vectors.append({
                 "id": vector_id,
@@ -223,6 +227,9 @@ class PineconeRAG:
                 'original_name': meta.get('originalName', 'Unknown'),
                 'score': hybrid_score,
                 'source_type': meta.get('type', 'document'),
+                # 'text' is only present for chat vectors (stored inline in Pinecone metadata);
+                # for regular document vectors it is absent (text lives in MongoDB).
+                'pinecone_text': meta.get('text', ''),
             })
 
         return matches
@@ -235,50 +242,57 @@ class PineconeRAG:
     ) -> str:
         """Generate a biographer response given pre-fetched context chunks.
 
+        Prompt architecture:
+          - system:  full persona + RAG context + interviewing instructions
+          - history: chat_history turns replayed verbatim (user/assistant pairs)
+          - user:    the raw current query only
+
+        Keeping persona and instructions in the system message (not a user turn) gives
+        the model stronger adherence to the biographer role throughout the conversation.
+
         context_parts: list of dicts with 'original_name', 'score', 'text' keys.
         """
         if not self.groq_client:
             return "Error: AI Service not fully initialized (Missing Groq Client). Please check GROQ_API_KEY."
 
         if context_parts:
-            context = "\n\n".join(
+            context_text = "\n\n".join(
                 f"Source ({c.get('score', 0):.2f}): {c.get('original_name', 'Unknown')}\n{c.get('text', '')}"
                 for c in context_parts
             )
         else:
-            context = "[No relevant archived memories found. Rely on the user's input.]"
+            context_text = "[No relevant archived memories found. Rely on the user's input.]"
 
-        system_msg = {"role": "system", "content": "You are a helpful personal biographer assistant named Jeevani."}
+        # Full persona + context + interviewing rules go in the system message.
+        # This gives the model the highest-fidelity adherence to the biographer role.
+        system_content = f"""You are 'Jeevani', a personal biographer. Use the archived context below to enrich your responses.
 
-        prompt = f"""You are 'Jeevani', a personal biographer. Use the context below to answer the user's question or continue the conversation.
-
-Context:
-{context}
-
-User Input: {query}
+Archived Memory Context:
+{context_text}
 
 **Your Goal:**
 You are not just a chatbot; you are a biographer. Your mission is to document the user's life story.
-1. **The Active Interviewer:** Don't just answer; explore. Chase the story. Ask about "sensory details" (smells, sounds, feelings).
-2. **The Connector:** Use the provided 'Context' to find patterns. "This reminds me of [Other Event] you mentioned..."
+1. **The Active Interviewer:** Don't just answer; explore. Chase the story. Ask about sensory details (smells, sounds, feelings).
+2. **The Connector:** Use the provided context to find patterns. "This reminds me of [Other Event] you mentioned..."
 3. **The Empath:** Be warm, patient, and deep. Avoid corporate speak.
 
 **The Balance Rule (CRITICAL):**
-- If the user's answer is brief -> **Dig Deeper** (ask for details).
-- If the user seems finished, deflects, or the topic is dry -> **Pivot** (connect to a new topic).
-- **NEVER FORCE:** Do not interrogate. Keep the flow natural.
+- If the user's answer is brief -> Dig Deeper (ask for details).
+- If the user seems finished, deflects, or the topic is dry -> Pivot (connect to a new topic).
+- NEVER FORCE: Do not interrogate. Keep the flow natural.
 
 **Formatting:**
 - Use short, readable paragraphs.
-- End with **ONE** quality follow-up question (if appropriate)."""
+- End with ONE quality follow-up question (if appropriate)."""
 
-        messages = [system_msg]
+        messages = [{"role": "system", "content": system_content}]
         if chat_history:
             # 20-turn window (Phase A): covers ~30-40 min of typical session
             # without hitting token limits (Groq 128k context, messages are short)
             for msg in chat_history[-20:]:
                 messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
-        messages.append({"role": "user", "content": prompt})
+        # Only the raw user query as the final user turn — no instructions mixed in
+        messages.append({"role": "user", "content": query})
 
         completion = self.groq_client.chat.completions.create(
             model=self.model,

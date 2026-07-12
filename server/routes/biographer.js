@@ -68,10 +68,14 @@ router.get('/greeting', ensureAuthenticated, async (req, res) => {
 
         // Capture the unresolved/emotional thread from the most recent conversation.
         // Used by the Empath greeting priority — independent of whether a summary exists.
-        // A summarised session can still have had a thread worth continuing.
+        // Guard: skip entries that contain ONLY the AI greeting (no real user message yet);
+        // otherwise lastChat would be the AI's own question, causing it to repeat itself.
         if (lastEntry && lastEntry.messages.length > 0) {
-            const lastMsgs = lastEntry.messages.slice(-2);
-            lastChat = lastMsgs.map(m => `${m.role}: ${m.content}`).join(" | ");
+            const hasUserMsg = lastEntry.messages.some(m => m.role === 'user');
+            if (hasUserMsg) {
+                const lastMsgs = lastEntry.messages.slice(-2);
+                lastChat = lastMsgs.map(m => `${m.role}: ${m.content}`).join(" | ");
+            }
         }
 
         // 3. On This Day (Same Month/Day, Previous Years)
@@ -268,13 +272,15 @@ router.post('/chat', ensureAuthenticated, async (req, res) => {
             { upsert: true, new: true }
         );
 
-        // Decision 2: fire-and-forget embedding of user message into Pinecone
-        // so the biographer can semantically recall past conversations.
+        // Decision 2: fire-and-forget embedding of both the user message AND Jeevani's
+        // answer into Pinecone so the biographer can semantically recall both sides of
+        // past conversations (not just what the user said, but what was explored together).
         // Uses synthetic docId 'chat_{journalId}_{timestamp}' to namespace chat vectors.
         if (savedEntry) {
             const chatDocId = `chat_${savedEntry._id.toString()}_${Date.now()}`;
+            const combinedText = `User: ${message}\nJeevani: ${answer}`;
             axios.post(`${AI_SERVICE_URL}/ingest/text`,
-                { userId, docId: chatDocId, text: message, originalName: `Chat on ${today}`, type: 'chat' },
+                { userId, docId: chatDocId, text: combinedText, originalName: `Chat on ${today}`, type: 'chat' },
                 { headers, timeout: 30000 }
             ).catch(err => {
                 console.warn('[biographer] Chat embedding failed (non-fatal):', err.message);
