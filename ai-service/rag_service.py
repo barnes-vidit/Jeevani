@@ -234,6 +234,33 @@ class PineconeRAG:
 
         return matches
 
+    def _format_context_part(self, c: Dict) -> str:
+        """Format a single RAG context chunk with a source-aware label.
+
+        Uses a human-readable type tag ([MEMORY], [PHOTO], [AUDIO]) instead of
+        the raw internal filename so that:
+          1. Cloudinary UUIDs / internal asset IDs never leak into the LLM prompt.
+          2. The LLM knows the nature of each piece of context and can apply the
+             correct usage rules defined in the system prompt.
+        """
+        source_type = c.get('source_type', 'document')
+        score = c.get('score', 0)
+        text = c.get('text', '')
+
+        if source_type == 'image':
+            label = f"[PHOTO — visual description, relevance {score:.2f}]"
+        elif source_type == 'audio':
+            label = f"[AUDIO TRANSCRIPT, relevance {score:.2f}]"
+        elif source_type == 'chat':
+            label = f"[PAST CONVERSATION, relevance {score:.2f}]"
+        else:
+            # For text documents, the original name is meaningful (e.g. "My diary 2003.pdf")
+            # and safe to surface — it's user-supplied, not a system-generated ID.
+            original_name = c.get('original_name', 'Unknown')
+            label = f"[MEMORY — {original_name}, relevance {score:.2f}]"
+
+        return f"{label}\n{text}"
+
     def generate_answer(
         self,
         context_parts: List[Dict],
@@ -250,15 +277,14 @@ class PineconeRAG:
         Keeping persona and instructions in the system message (not a user turn) gives
         the model stronger adherence to the biographer role throughout the conversation.
 
-        context_parts: list of dicts with 'original_name', 'score', 'text' keys.
+        context_parts: list of dicts with 'original_name', 'score', 'text', 'source_type' keys.
         """
         if not self.groq_client:
             return "Error: AI Service not fully initialized (Missing Groq Client). Please check GROQ_API_KEY."
 
         if context_parts:
             context_text = "\n\n".join(
-                f"Source ({c.get('score', 0):.2f}): {c.get('original_name', 'Unknown')}\n{c.get('text', '')}"
-                for c in context_parts
+                self._format_context_part(c) for c in context_parts
             )
         else:
             context_text = "[No relevant archived memories found. Rely on the user's input.]"
@@ -281,9 +307,19 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
 - If the user seems finished, deflects, or the topic is dry -> Pivot (connect to a new topic).
 - NEVER FORCE: Do not interrogate. Keep the flow natural.
 
-**Formatting:**
-- Use short, readable paragraphs.
-- End with ONE quality follow-up question (if appropriate)."""
+**Using Archived Context (CRITICAL):**
+- [MEMORY] entries are text the user has written or shared — use them freely to enrich the conversation.
+- [PHOTO] entries are visual descriptions of an uploaded image. Only reference a photo if the user is explicitly asking about it or a specific image. Do NOT weave photo descriptions into unrelated conversations.
+- [AUDIO] entries are transcripts of voice recordings. Treat them like memories, but attribute them as something the user said aloud.
+- Never reveal internal filenames, IDs, or technical metadata to the user.
+
+**Response Length (CRITICAL — mirror the user's energy):**
+- The narrator should do the vast majority of the talking. Your job is to listen and draw them out, not to perform.
+- **Match the length of your reply to the length of their message.** If they wrote 1-2 sentences, respond in 1-2 sentences — a brief warm acknowledgement + one precise question. Never write more than they did.
+- **Never analyse or explain back** what the user just told you. They already know. It comes across as lecturing.
+- **One question only.** Never ask two questions in the same response. Pick the sharpest one and stop.
+- Use simple verbal nudges when appropriate: "That's vivid — tell me more." / "What did that feel like?" / "Who else was there?"
+- Only write longer responses (3+ sentences) when the user has shared a long, rich story that genuinely needs a thoughtful reply."""
 
         messages = [{"role": "system", "content": system_content}]
         if chat_history:
@@ -298,7 +334,7 @@ You are not just a chatbot; you are a biographer. Your mission is to document th
             model=self.model,
             messages=messages,
             temperature=0.7,
-            max_tokens=1024,
+            max_tokens=400,
             top_p=1,
             stream=False,
             stop=None,
